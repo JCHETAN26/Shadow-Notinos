@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: shadow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shadow
+      POSTGRES_PASSWORD: shadow
+      POSTGRES_DB: shadow_notino
+    ports:
+      # Host 5435 to avoid clashing with other Postgres instances on this machine.
+      - "5435:5432"
+    volumes:
+      - shadow-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shadow -d shadow_notino"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: shadow-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - shadow-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  shadow-pgdata:
+  shadow-redisdata:
