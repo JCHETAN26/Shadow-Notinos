@@ -3,6 +3,7 @@ import cors from "cors";
 import { env } from "./env.js";
 import { healthRouter } from "./routes/health.js";
 import { runsRouter } from "./routes/runs.js";
+import { notionRouter } from "./routes/notion.js";
 import { createAgentWorker } from "./workers/agent.worker.js";
 
 const app = express();
@@ -18,12 +19,13 @@ app.get("/", (_req, res) => {
   res.json({
     service: "shadow-notino-api",
     docs: "See docs/SYSTEM_PROMPT.md and docs/BUILD_PLAN.md",
-    endpoints: ["/health", "/api/runs", "/api/runs/:id"],
+    endpoints: ["/health", "/api/runs", "/api/runs/:id", "/api/notion/docs"],
   });
 });
 
 app.use("/", healthRouter);
 app.use("/api", runsRouter);
+app.use("/api", notionRouter);
 
 // Central error handler — always return a useful message (SYSTEM_PROMPT error rules).
 app.use(
