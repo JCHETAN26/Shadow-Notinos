@@ -4,28 +4,40 @@ import { env } from "./env.js";
 import { healthRouter } from "./routes/health.js";
 import { runsRouter } from "./routes/runs.js";
 import { notionRouter } from "./routes/notion.js";
+import { webhooksRouter } from "./routes/webhooks.js";
+import { demoRouter } from "./routes/demo.js";
 import { createAgentWorker } from "./workers/agent.worker.js";
 
 const app = express();
 
 app.use(cors({ origin: env.webUrl, credentials: true }));
 
-// NOTE: the GitHub webhook (Phase 3) needs the *raw* body for signature
-// verification, so it must mount its own raw body parser before this. JSON
-// parsing here applies to every other route.
+// The GitHub webhook needs the *raw* request body to verify the HMAC signature,
+// so it is mounted with its own raw parser BEFORE the global JSON parser.
+app.use("/api", webhooksRouter);
+
+// JSON parsing applies to every other route.
 app.use(express.json({ limit: "2mb" }));
 
 app.get("/", (_req, res) => {
   res.json({
     service: "shadow-notino-api",
     docs: "See docs/SYSTEM_PROMPT.md and docs/BUILD_PLAN.md",
-    endpoints: ["/health", "/api/runs", "/api/runs/:id", "/api/notion/docs"],
+    endpoints: [
+      "/health",
+      "/api/runs",
+      "/api/runs/:id",
+      "/api/notion/docs",
+      "POST /api/webhooks/github",
+      "POST /api/demo/replay-github-event",
+    ],
   });
 });
 
 app.use("/", healthRouter);
 app.use("/api", runsRouter);
 app.use("/api", notionRouter);
+app.use("/api", demoRouter);
 
 // Central error handler — always return a useful message (SYSTEM_PROMPT error rules).
 app.use(

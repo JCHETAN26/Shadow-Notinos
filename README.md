@@ -109,7 +109,7 @@ Built in phases (see `docs/BUILD_PLAN.md`):
 
 - [x] **Phase 1** — Monorepo + infrastructure (`pnpm dev` runs web + API)
 - [x] **Phase 2** — Notion workspace seeder (`pnpm notion:seed`, `--verify`)
-- [ ] Phase 3 — GitHub webhook + replay
+- [x] **Phase 3** — GitHub webhook (signature-verified) + local replay endpoint
 - [ ] Phase 4 — PR context fetcher
 - [ ] Phase 5 — Notion indexer + search
 - [ ] Phase 6 — Agent planner
