@@ -1,0 +1,33 @@
+{
+  "name": "shadow-notino",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agentic GitHub-to-Notion documentation system",
+  "scripts": {
+    "dev": "pnpm -r --parallel --stream dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @shadow/api db:generate",
+    "db:migrate": "pnpm --filter @shadow/api db:migrate",
+    "db:push": "pnpm --filter @shadow/api db:push",
+    "db:studio": "pnpm --filter @shadow/api db:studio",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "infra:logs": "docker compose -f infra/docker-compose.yml logs -f"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "overrides": {
+      "ioredis": "5.11.1"
+    }
+  },
+  "packageManager": "pnpm@9.15.9"
+}

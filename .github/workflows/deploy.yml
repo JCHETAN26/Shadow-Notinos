@@ -1,0 +1,45 @@
+name: Deploy
+
+# CD scaffold. No deploy target is wired yet — fill in the deploy steps once a
+# host is chosen (Vercel for web, Railway/Fly/Render for API + worker + Postgres).
+# Until then this runs a production build on demand so the pipeline stays green.
+
+on:
+  # Manual for now. Switch to `push: branches: [main]` once a deploy target is
+  # wired so merges to main ship automatically.
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @shadow/api db:generate
+
+      - name: Build
+        run: pnpm -r build
+
+      # --- Deploy steps (enable when a target is configured) ---
+      # - name: Deploy web (Vercel)
+      #   run: npx vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }}
+      # - name: Deploy API + worker (Railway)
+      #   run: railway up --service api
+      - name: Deploy placeholder
+        run: echo "No deploy target configured yet. See deploy.yml to enable."

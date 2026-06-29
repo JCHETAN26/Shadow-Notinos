@@ -1,0 +1,139 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+enum AgentRunStatus {
+  queued
+  fetching_pr
+  indexing
+  searching
+  planning
+  waiting_approval
+  applying
+  applied
+  rejected
+  failed
+}
+
+enum PatchPlanStatus {
+  proposed
+  approved
+  rejected
+  applied
+  failed
+}
+
+enum PatchActionStatus {
+  pending
+  applied
+  failed
+  skipped
+}
+
+model AgentRun {
+  id            String         @id @default(uuid())
+  repo          String
+  prNumber      Int
+  prTitle       String
+  prUrl         String
+  author        String?
+  status        AgentRunStatus @default(queued)
+  diffSummary   String?
+  impactSummary String?
+  prContext     Json?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  patchPlans PatchPlan[]
+  events     RunEvent[]
+
+  @@index([repo, prNumber])
+  @@map("agent_runs")
+}
+
+model RunEvent {
+  id         String   @id @default(uuid())
+  agentRunId String
+  type       String
+  message    String?
+  data       Json?
+  createdAt  DateTime @default(now())
+
+  agentRun AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  @@index([agentRunId])
+  @@map("run_events")
+}
+
+model NotionDoc {
+  id            String    @id @default(uuid())
+  notionPageId  String    @unique
+  title         String
+  serviceName   String?
+  owner         String?
+  docStatus     String?
+  lastIndexedAt DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  @@map("notion_docs")
+}
+
+/// One embedded chunk of a Notion page. `embedding` is a pgvector column managed
+/// via raw SQL in the initial migration (Prisma maps it as Unsupported).
+model NotionBlock {
+  id           String   @id @default(uuid())
+  notionPageId String
+  notionBlockId String
+  blockType    String
+  headingPath  String?
+  plainText    String
+  tokenCount   Int      @default(0)
+  embedding    Unsupported("vector(1536)")?
+  updatedAt    DateTime @updatedAt
+
+  @@index([notionPageId])
+  @@map("notion_blocks")
+}
+
+model PatchPlan {
+  id           String          @id @default(uuid())
+  agentRunId   String
+  targetPageId String
+  status       PatchPlanStatus @default(proposed)
+  patchJson    Json
+  createdAt    DateTime        @default(now())
+  approvedAt   DateTime?
+  appliedAt    DateTime?
+
+  agentRun AgentRun      @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  actions  PatchAction[]
+
+  @@index([agentRunId])
+  @@map("patch_plans")
+}
+
+model PatchAction {
+  id            String            @id @default(uuid())
+  patchPlanId   String
+  actionType    String
+  targetBlockId String?
+  headingMatch  String?
+  notionPayload Json
+  status        PatchActionStatus @default(pending)
+  errorMessage  String?
+  notionId      String?
+  createdAt     DateTime          @default(now())
+  appliedAt     DateTime?
+
+  patchPlan PatchPlan @relation(fields: [patchPlanId], references: [id], onDelete: Cascade)
+
+  @@index([patchPlanId])
+  @@map("patch_actions")
+}
