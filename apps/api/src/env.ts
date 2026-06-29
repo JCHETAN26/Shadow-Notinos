@@ -31,6 +31,7 @@ export const env = {
   anthropicApiKey: optional("ANTHROPIC_API_KEY"),
 
   notionApiKey: optional("NOTION_API_KEY"),
+  notionParentPageId: optional("NOTION_PARENT_PAGE_ID"),
   notionDbs: {
     engineeringDocs: optional("NOTION_ENGINEERING_DOCS_DATABASE_ID"),
     services: optional("NOTION_SERVICES_DATABASE_ID"),

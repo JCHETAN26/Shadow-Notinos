@@ -80,6 +80,23 @@ pnpm dev
 > The local Postgres is published on host port **5435** (see `infra/docker-compose.yml`)
 > to avoid clashing with other Postgres instances; the API connects over that port.
 
+## Notion setup
+
+1. Create an internal integration at https://www.notion.so/my-integrations and
+   copy its secret into `NOTION_API_KEY`.
+2. Create a Notion page to hold the workspace, **share it with the integration**
+   (`•••` → Connections), and put its id in `NOTION_PARENT_PAGE_ID`.
+3. Seed the databases and sample docs, writing the resulting IDs back to `.env`:
+
+   ```bash
+   pnpm notion:seed --write-env   # creates Engineering Docs, Services, PR Updates,
+                                  # Agent Runs, Doc Review Tasks + 3 sample docs
+   pnpm notion:seed --verify      # re-checks IDs + required properties
+   ```
+
+4. Confirm the API can read them: `GET /api/notion/docs` lists the seeded docs
+   live from Notion.
+
 ## Workflow
 
 `main` is protected. All work lands through pull requests, gated by GitHub
@@ -91,7 +108,7 @@ Postgres service). See `.github/workflows/`.
 Built in phases (see `docs/BUILD_PLAN.md`):
 
 - [x] **Phase 1** — Monorepo + infrastructure (`pnpm dev` runs web + API)
-- [ ] Phase 2 — Notion workspace seeder
+- [x] **Phase 2** — Notion workspace seeder (`pnpm notion:seed`, `--verify`)
 - [ ] Phase 3 — GitHub webhook + replay
 - [ ] Phase 4 — PR context fetcher
 - [ ] Phase 5 — Notion indexer + search
