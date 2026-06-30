@@ -96,6 +96,16 @@ pnpm dev
 
 4. Confirm the API can read them: `GET /api/notion/docs` lists the seeded docs
    live from Notion.
+5. Index the docs into pgvector and try semantic search:
+
+   ```bash
+   pnpm notion:index                       # crawl → chunk → embed → pgvector
+   pnpm notion:search "search fallback ranking"
+   ```
+
+   Embeddings run **locally** via Transformers.js (all-MiniLM-L6-v2, 384-dim) —
+   no API key, offline. The ~90MB model downloads once on first run. Search is
+   also exposed at `GET /api/notion/search?q=...`.
 
 ## Workflow
 
@@ -111,7 +121,7 @@ Built in phases (see `docs/BUILD_PLAN.md`):
 - [x] **Phase 2** — Notion workspace seeder (`pnpm notion:seed`, `--verify`)
 - [x] **Phase 3** — GitHub webhook (signature-verified) + local replay endpoint
 - [x] **Phase 4** — PR context fetcher (live GitHub API + demo fixture fallback)
-- [ ] Phase 5 — Notion indexer + search
+- [x] **Phase 5** — Notion indexer + semantic search (local embeddings, pgvector)
 - [ ] Phase 6 — Agent planner
 - [ ] Phase 7 — Approval UI
 - [ ] Phase 8 — Notion writer
