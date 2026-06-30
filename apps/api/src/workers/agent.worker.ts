@@ -4,7 +4,10 @@ import { prisma } from "../db/prisma.js";
 import { connection } from "../queue.js";
 import { logRunEvent } from "../services/audit.js";
 import { getPRContext } from "../services/github/pr-context.js";
-import { searchDocs } from "../services/notion/search.js";
+import { searchDocs, getPageHeadings } from "../services/notion/search.js";
+import { generatePatchPlan } from "../agents/planner.js";
+import { savePatchPlan } from "../services/patch-plans.js";
+import { env } from "../env.js";
 import type { PullRequestContext } from "@shadow/shared";
 
 /** Build a retrieval query from the parts of a PR most likely to name affected docs. */
@@ -52,11 +55,7 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
     const related = await searchDocs(query, 5);
     await prisma.agentRun.update({
       where: { id: runId },
-      data: {
-        relatedDocs: related,
-        // The planner (Phase 6) consumes relatedDocs; park here until then.
-        status: "planning",
-      },
+      data: { relatedDocs: related, status: "planning" },
     });
     await logRunEvent(
       runId,
@@ -65,6 +64,39 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
         ? `Found ${related.length} related doc(s): ${related.map((r) => r.title).join(", ")}`
         : "No related docs found (is the workspace seeded + indexed?)",
       { query, pages: related.map((r) => ({ title: r.title, score: r.score })) },
+    );
+
+    // --- Phase 6: generate the documentation patch plan ---
+    const target = related[0];
+    if (!target) {
+      await prisma.agentRun.update({ where: { id: runId }, data: { status: "failed" } });
+      await logRunEvent(runId, "run_failed", "No related docs to plan against — seed + index the workspace first.");
+      return;
+    }
+    if (!env.anthropicApiKey) {
+      await prisma.agentRun.update({ where: { id: runId }, data: { status: "failed" } });
+      await logRunEvent(runId, "run_failed", "ANTHROPIC_API_KEY is not set — cannot run the planner.");
+      return;
+    }
+
+    const headings = await getPageHeadings(target.pageId);
+    const plan = await generatePatchPlan({
+      runId,
+      pr: prContext,
+      relatedDocs: related,
+      targetPage: { pageId: target.pageId, title: target.title, headings },
+    });
+
+    const planId = await savePatchPlan(plan);
+    await prisma.agentRun.update({
+      where: { id: runId },
+      data: { status: "waiting_approval", impactSummary: plan.summary },
+    });
+    await logRunEvent(
+      runId,
+      "patch_generated",
+      `Proposed ${plan.actions.length} action(s) for "${plan.targetPageTitle}" (confidence ${plan.confidence.toFixed(2)})`,
+      { planId, actions: plan.actions.map((a) => a.type), risks: plan.risks },
     );
   } catch (err) {
     await prisma.agentRun.update({ where: { id: runId }, data: { status: "failed" } });

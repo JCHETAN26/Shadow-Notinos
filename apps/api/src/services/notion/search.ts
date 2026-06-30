@@ -62,3 +62,16 @@ export async function searchDocs(query: string, topK = 5): Promise<SearchResult[
 
   return [...byPage.values()].sort((a, b) => b.score - a.score).slice(0, topK);
 }
+
+/** Distinct heading paths indexed for a page — the target set for patch actions. */
+export async function getPageHeadings(pageId: string): Promise<string[]> {
+  const rows = await prisma.notionBlock.findMany({
+    where: { notionPageId: pageId, NOT: { headingPath: null } },
+    select: { headingPath: true },
+    distinct: ["headingPath"],
+  });
+  return rows
+    .map((r) => r.headingPath ?? "")
+    .filter((h) => h.length > 0)
+    .sort();
+}
