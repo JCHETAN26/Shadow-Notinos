@@ -10,6 +10,9 @@ human approval, and writes approved changes back into Notion.
 Engineering docs go stale because teams ship code faster than they update the
 wiki. Shadow Notino closes that gap — without ever silently editing your docs.
 
+> **Full A–Z documentation:** [`docs/PRODUCT.md`](docs/PRODUCT.md) — architecture,
+> data model, every component, API reference, setup, testing, and more.
+
 ---
 
 ## How it works
