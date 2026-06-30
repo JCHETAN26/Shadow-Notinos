@@ -2,6 +2,7 @@ import { Router } from "express";
 import { DocPatchPlanSchema } from "@shadow/shared";
 import { prisma } from "../db/prisma.js";
 import { logRunEvent } from "../services/audit.js";
+import { applyPatchPlan } from "../services/notion/writer.js";
 
 export const patchesRouter: Router = Router();
 
@@ -48,7 +49,17 @@ patchesRouter.post("/runs/:id/approve", async (req, res, next) => {
     await prisma.agentRun.update({ where: { id: req.params.id }, data: { status: "applying" } });
     await logRunEvent(req.params.id, "patch_approved", `Approved ${plan.id}`);
 
-    res.json({ ok: true, planId: plan.id, status: "approved" });
+    // Apply the approved actions to Notion (Phase 8). Synchronous so the UI
+    // shows the write outcome immediately.
+    try {
+      const result = await applyPatchPlan(plan.id);
+      res.json({ ok: result.ok, planId: plan.id, status: result.ok ? "applied" : "failed", result });
+    } catch (writeErr) {
+      await prisma.patchPlan.update({ where: { id: plan.id }, data: { status: "failed" } });
+      await prisma.agentRun.update({ where: { id: req.params.id }, data: { status: "failed" } });
+      await logRunEvent(req.params.id, "write_failed", (writeErr as Error).message);
+      res.status(502).json({ ok: false, planId: plan.id, error: (writeErr as Error).message });
+    }
   } catch (err) {
     next(err);
   }
