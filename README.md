@@ -28,6 +28,30 @@ GitHub PR merged
 The LLM **never** writes to Notion. It only proposes a validated `DocPatchPlan`;
 the backend applies approved actions. Human approval is mandatory.
 
+## Architecture
+
+```mermaid
+flowchart TD
+    GH[GitHub: PR merged] -->|webhook + HMAC| WH[POST /api/webhooks/github]
+    WH -->|create agent_run| PG[(Postgres)]
+    WH -->|enqueue| Q[BullMQ / Redis]
+    Q --> W[Agent worker]
+    W -->|Octokit| PRC[PR context fetcher]
+    W -->|cosine search| VEC[(pgvector)]
+    IDX[Notion indexer] -->|crawl - chunk - embed| VEC
+    W -->|PR + docs + headings| LLM[Claude planner]
+    LLM -->|DocPatchPlan JSON| ZOD[Zod validation + retry]
+    ZOD -->|store proposed| PG
+    PG --> UI[Next.js approval UI]
+    UI -->|approve| WR[Notion writer]
+    WR -->|blocks.append / pages.update| NOTION[(Notion)]
+    WR -->|audit events| PG
+```
+
+Every important step writes an auditable `run_events` row: `webhook_received`,
+`pr_fetched`, `docs_searched`, `patch_generated`, `patch_approved`,
+`block_write_started`, `block_write_completed`, `write_failed`, `run_completed`.
+
 ## Tech stack
 
 | Layer        | Tech                                                        |
@@ -107,11 +131,61 @@ pnpm dev
    no API key, offline. The ~90MB model downloads once on first run. Search is
    also exposed at `GET /api/notion/search?q=...`.
 
+## Two-minute demo
+
+1. `pnpm dev`, then open `http://localhost:3000/demo`.
+2. **Verify** the Notion workspace → **Index docs** → **Replay PR #184**.
+3. Watch the agent move through `fetching_pr → searching → planning → waiting_approval`.
+4. **Open the run**, review the proposed callouts / code blocks / review task and the
+   risks, then click **Approve and Write to Notion**.
+5. The Notion page gains a "ranking fallback" callout, a config code block, and a
+   verification to-do; a Doc Review Task is filed; the run is logged end to end.
+
+The sample PR (`#184 — Add ranking fallback for slow search provider`) adds a
+`fallback_strategy` param, a `SEARCH_FALLBACK_TIMEOUT_MS` config var, and a
+`ranking_source` response field — exactly the kind of change that silently rots a
+"Search Service API Reference" page.
+
+## How the agent works
+
+The planner receives the PR context, the top retrieved Notion docs, and the target
+page's **real heading list**, then must return a single JSON `DocPatchPlan`. Three
+guarantees keep it safe:
+
+- **Grounded** — the backend forces `targetPageId`/`targetPageTitle` to a doc that
+  retrieval actually returned, so the model can't invent or retarget a page.
+- **Validated** — the output is parsed with Zod; on failure the agent retries once
+  with the validation error fed back, then fails the run with a precise message.
+- **Conservative** — low confidence produces a review task instead of an aggressive
+  rewrite, and behavior that can't be proven from the diff becomes a verification to-do.
+
+## Human-in-the-loop safety model
+
+- The LLM only ever emits a `DocPatchPlan`; it has no Notion write access.
+- Only backend code (`services/notion/writer.ts`) applies changes, and only after a
+  human clicks approve. Rejected and edited patches are first-class.
+- Every action is stored as a `patch_actions` row with its own status and any error,
+  and every transition is in the audit log — nothing happens invisibly.
+
 ## Workflow
 
 `main` is protected. All work lands through pull requests, gated by GitHub
 Actions CI (lint/typecheck/build + a Prisma migration check against a real
 Postgres service). See `.github/workflows/`.
+
+## Limitations
+
+- **MVP scope by design** — no OAuth, multi-tenant auth, or full GitHub App install;
+  a single Notion integration token. The webhook is signature-verified but expects
+  one workspace.
+- **Embeddings are local** (all-MiniLM-L6-v2, 384-dim) for a zero-key demo; swap in
+  OpenAI/Voyage by changing one module and the vector column dimension.
+- **Heading match is top-level** — append actions target top-level headings; deeply
+  nested sections fall back to appending at the end of the page.
+- **Notion-dependent paths** (seed / index / plan / write) need real credentials;
+  CI validates compile, build, and migrations, not live third-party calls.
+- The agent worker runs **in-process** with the API in dev for one-command startup;
+  in production run it standalone (`pnpm --filter @shadow/api worker`).
 
 ## Status
 
@@ -126,7 +200,26 @@ Built in phases (see `docs/BUILD_PLAN.md`):
 - [x] **Phase 7** — Approval UI (`/runs`, `/runs/:id` with diff, actions, approve/reject)
 - [x] **Phase 8** — Notion writer (heading-targeted append, review tasks, status, retry)
 - [x] **Phase 9** — Guided demo page (`/demo`: verify → index → replay → approve)
-- [ ] Phase 10 — Polish
+- [x] **Phase 10** — Polish (architecture diagram, safety model, limitations, README)
+
+**Definition of done — met:** merge/replay a PR → agent run starts → related Notion
+doc retrieved → patch plan generated → user approves → Notion page updates → audit
+log records every change.
+
+## Resume bullets
+
+- Built an agentic GitHub-to-Notion documentation system that watches merged pull
+  requests, analyzes code diffs, retrieves related engineering docs, and proposes
+  block-level Notion updates for human approval.
+- Implemented a Notion workspace indexer that recursively reads page block trees,
+  embeds documentation into **pgvector**, and retrieves outdated docs related to
+  changed services and API files.
+- Designed a structured agent planner using the **Claude API** and **Zod** schemas to
+  generate safe documentation patch plans (callouts, code blocks, review tasks, doc
+  status) with grounded targeting and retry-on-invalid validation.
+- Built a **Next.js** approval dashboard and a queued **BullMQ** pipeline that applies
+  approved block mutations through the Notion API while preserving a Postgres audit
+  log of every agent run.
 
 ## License
 
