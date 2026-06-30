@@ -125,7 +125,7 @@ Built in phases (see `docs/BUILD_PLAN.md`):
 - [x] **Phase 6** — Agent planner (Claude → Zod-validated DocPatchPlan, retry-on-invalid)
 - [x] **Phase 7** — Approval UI (`/runs`, `/runs/:id` with diff, actions, approve/reject)
 - [x] **Phase 8** — Notion writer (heading-targeted append, review tasks, status, retry)
-- [ ] Phase 9 — Demo page
+- [x] **Phase 9** — Guided demo page (`/demo`: verify → index → replay → approve)
 - [ ] Phase 10 — Polish
 
 ## License
