@@ -124,7 +124,7 @@ Built in phases (see `docs/BUILD_PLAN.md`):
 - [x] **Phase 5** — Notion indexer + semantic search (local embeddings, pgvector)
 - [x] **Phase 6** — Agent planner (Claude → Zod-validated DocPatchPlan, retry-on-invalid)
 - [x] **Phase 7** — Approval UI (`/runs`, `/runs/:id` with diff, actions, approve/reject)
-- [ ] Phase 8 — Notion writer
+- [x] **Phase 8** — Notion writer (heading-targeted append, review tasks, status, retry)
 - [ ] Phase 9 — Demo page
 - [ ] Phase 10 — Polish
 
