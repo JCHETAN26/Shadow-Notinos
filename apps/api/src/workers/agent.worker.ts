@@ -4,6 +4,14 @@ import { prisma } from "../db/prisma.js";
 import { connection } from "../queue.js";
 import { logRunEvent } from "../services/audit.js";
 import { getPRContext } from "../services/github/pr-context.js";
+import { searchDocs } from "../services/notion/search.js";
+import type { PullRequestContext } from "@shadow/shared";
+
+/** Build a retrieval query from the parts of a PR most likely to name affected docs. */
+function buildSearchQuery(pr: PullRequestContext): string {
+  const files = pr.filesChanged.map((f) => f.filename).join(" ");
+  return [pr.title, pr.labels.join(" "), files].filter(Boolean).join(" ");
+}
 
 /**
  * The agent pipeline. Implemented incrementally:
@@ -30,18 +38,33 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
 
     await prisma.agentRun.update({
       where: { id: runId },
-      data: {
-        prContext,
-        diffSummary: prContext.diffSummary,
-        // Next stages (search → plan) land in later phases; park here for now.
-        status: "searching",
-      },
+      data: { prContext, diffSummary: prContext.diffSummary, status: "searching" },
     });
     await logRunEvent(
       runId,
       "pr_fetched",
       `Fetched ${prContext.filesChanged.length} changed file(s), ${prContext.commits.length} commit(s)`,
       { files: prContext.filesChanged.map((f) => f.filename) },
+    );
+
+    // --- Phase 5: retrieve related Notion docs ---
+    const query = buildSearchQuery(prContext);
+    const related = await searchDocs(query, 5);
+    await prisma.agentRun.update({
+      where: { id: runId },
+      data: {
+        relatedDocs: related,
+        // The planner (Phase 6) consumes relatedDocs; park here until then.
+        status: "planning",
+      },
+    });
+    await logRunEvent(
+      runId,
+      "docs_searched",
+      related.length > 0
+        ? `Found ${related.length} related doc(s): ${related.map((r) => r.title).join(", ")}`
+        : "No related docs found (is the workspace seeded + indexed?)",
+      { query, pages: related.map((r) => ({ title: r.title, score: r.score })) },
     );
   } catch (err) {
     await prisma.agentRun.update({ where: { id: runId }, data: { status: "failed" } });

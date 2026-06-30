@@ -1,3 +1,6 @@
+// Importing env first ensures the root .env is loaded (DATABASE_URL) for every
+// entrypoint that touches the database — server, worker, and standalone scripts.
+import "../env.js";
 import { PrismaClient } from "@prisma/client";
 
 // Single shared Prisma client across the API process and workers.

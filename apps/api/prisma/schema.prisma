@@ -48,6 +48,7 @@ model AgentRun {
   diffSummary   String?
   impactSummary String?
   prContext     Json?
+  relatedDocs   Json?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -95,7 +96,8 @@ model NotionBlock {
   headingPath  String?
   plainText    String
   tokenCount   Int      @default(0)
-  embedding    Unsupported("vector(1536)")?
+  // 384 dims — Transformers.js all-MiniLM-L6-v2 (local, offline embeddings).
+  embedding    Unsupported("vector(384)")?
   updatedAt    DateTime @updatedAt
 
   @@index([notionPageId])
