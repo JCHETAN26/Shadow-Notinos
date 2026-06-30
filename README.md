@@ -123,7 +123,7 @@ Built in phases (see `docs/BUILD_PLAN.md`):
 - [x] **Phase 4** — PR context fetcher (live GitHub API + demo fixture fallback)
 - [x] **Phase 5** — Notion indexer + semantic search (local embeddings, pgvector)
 - [x] **Phase 6** — Agent planner (Claude → Zod-validated DocPatchPlan, retry-on-invalid)
-- [ ] Phase 7 — Approval UI
+- [x] **Phase 7** — Approval UI (`/runs`, `/runs/:id` with diff, actions, approve/reject)
 - [ ] Phase 8 — Notion writer
 - [ ] Phase 9 — Demo page
 - [ ] Phase 10 — Polish

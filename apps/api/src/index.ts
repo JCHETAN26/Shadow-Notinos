@@ -4,6 +4,7 @@ import { env } from "./env.js";
 import { healthRouter } from "./routes/health.js";
 import { runsRouter } from "./routes/runs.js";
 import { notionRouter } from "./routes/notion.js";
+import { patchesRouter } from "./routes/patches.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { demoRouter } from "./routes/demo.js";
 import { createAgentWorker } from "./workers/agent.worker.js";
@@ -37,6 +38,7 @@ app.get("/", (_req, res) => {
 app.use("/", healthRouter);
 app.use("/api", runsRouter);
 app.use("/api", notionRouter);
+app.use("/api", patchesRouter);
 app.use("/api", demoRouter);
 
 // Central error handler — always return a useful message (SYSTEM_PROMPT error rules).
