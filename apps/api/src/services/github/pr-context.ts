@@ -17,6 +17,18 @@ function trimPatch(patch: string | undefined): string | undefined {
   return lines.slice(0, MAX_PATCH_LINES).join("\n") + `\n… (+${lines.length - MAX_PATCH_LINES} more lines)`;
 }
 
+/**
+ * True if the PR has real textual changes worth documenting. Filters out the
+ * "ghost" cases the LLM should never be paid to look at: empty PRs and ones that
+ * only touch binary files (images, lockfile blobs), where GitHub reports no
+ * additions/deletions. Whitespace-only reformats still pass here and are caught
+ * downstream by the planner's no-op close.
+ */
+export function hasMeaningfulDiff(files: ChangedFile[]): boolean {
+  if (files.length === 0) return false;
+  return files.some((f) => f.additions + f.deletions > 0);
+}
+
 /** Build a short, human-readable summary of the changed files. */
 function buildDiffSummary(files: ChangedFile[]): string {
   if (files.length === 0) return "No files changed.";
