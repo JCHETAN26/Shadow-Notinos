@@ -30,6 +30,9 @@ export const env = {
   // The branch whose merges edit the live doc body. Merges into any other branch
   // are staged under a "Pending changes" toggle instead. (v2 branch-awareness)
   releaseBranch: optional("RELEASE_BRANCH", "main"),
+  // Comma/newline-separated glob allowlist. A PR whose changed files match none
+  // of these is skipped (no plan). Empty = process every PR. (v2 path gating)
+  docTriggerPaths: optional("DOC_TRIGGER_PATHS"),
 
   anthropicApiKey: optional("ANTHROPIC_API_KEY"),
 
