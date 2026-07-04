@@ -25,6 +25,7 @@ export function isMergedPR(event: GitHubMergedPREvent): boolean {
  */
 export async function createRunFromEvent(
   payload: unknown,
+  opts: { force?: boolean } = {},
 ): Promise<CreateRunOutcome> {
   const parsed = GitHubMergedPREventSchema.safeParse(payload);
   if (!parsed.success) {
@@ -40,11 +41,31 @@ export async function createRunFromEvent(
   }
 
   const pr = event.pull_request;
+  const repo = event.repository.full_name;
+
+  // Idempotency: a merged PR produces exactly one run. Skip duplicate or
+  // redelivered webhooks (GitHub can double-fire) so we never launch two
+  // overlapping runs that rewrite the same Notion page. A prior *failed* run
+  // doesn't block a retry; the demo replay passes force to bypass this.
+  if (!opts.force) {
+    const existing = await prisma.agentRun.findFirst({
+      where: { repo, prNumber: pr.number, status: { not: "failed" } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (existing) {
+      return {
+        created: false,
+        reason: `Duplicate: run ${existing.id} already exists for ${repo}#${pr.number} (status ${existing.status}).`,
+        runId: existing.id,
+      };
+    }
+  }
+
   const baseBranch = pr.base?.ref ?? null;
   const headBranch = pr.head?.ref ?? null;
   const run = await prisma.agentRun.create({
     data: {
-      repo: event.repository.full_name,
+      repo,
       prNumber: pr.number,
       prTitle: pr.title,
       prUrl: pr.html_url,
@@ -59,7 +80,7 @@ export async function createRunFromEvent(
   await logRunEvent(
     run.id,
     "webhook_received",
-    `Merged PR ${event.repository.full_name}#${pr.number}: ${pr.title}${branchNote}`,
+    `Merged PR ${repo}#${pr.number}: ${pr.title}${branchNote}`,
   );
 
   const jobData: AgentJobData = {
