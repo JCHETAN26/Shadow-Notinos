@@ -89,6 +89,22 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
       targetPage: { pageId: target.pageId, title: target.title, headings },
     });
 
+    // The planner may conclude the docs need no update. That's a healthy
+    // terminal state (no_changes) — close the run cleanly, propose nothing.
+    if (plan.actions.length === 0) {
+      await prisma.agentRun.update({
+        where: { id: runId },
+        data: { status: "no_changes", impactSummary: plan.summary },
+      });
+      await logRunEvent(
+        runId,
+        "run_no_changes",
+        `No documentation changes needed for "${target.title}": ${plan.summary}`,
+        { confidence: plan.confidence },
+      );
+      return;
+    }
+
     const planId = await savePatchPlan(plan);
     await prisma.agentRun.update({
       where: { id: runId },

@@ -40,6 +40,7 @@ Rules:
 - Do not invent pages or APIs.
 - Only propose changes grounded in the PR context.
 - Prefer small, precise edits over broad rewrites.
+- If the PR does not actually affect this page, return an EMPTY actions array ([]) with a summary explaining why. Do NOT invent edits to seem useful — proposing nothing is the correct answer when nothing changed.
 - If confidence is low, create a review task instead of editing technical docs.
 - Always include human verification tasks for behavior that cannot be proven from the diff.
 - Use Notion-native block types: callouts, bullets, code blocks, and to-do items.
@@ -52,7 +53,7 @@ function jsonSchemaHint(): string {
   "confidence": number (0..1),
   "summary": string,
   "risks": string[],
-  "actions": Array of one or more of:
+  "actions": Array of ZERO or more of (empty [] when no doc changes are needed):
     { "type": "append_callout", "targetHeading": string, "icon"?: string, "text": string }
     { "type": "append_code_block", "targetHeading": string, "language": string, "code": string }
     { "type": "append_todo", "targetHeading": string, "text": string, "checked": boolean }
