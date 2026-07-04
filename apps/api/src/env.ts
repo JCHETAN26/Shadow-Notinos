@@ -38,6 +38,8 @@ export const env = {
 
   notionApiKey: optional("NOTION_API_KEY"),
   notionParentPageId: optional("NOTION_PARENT_PAGE_ID"),
+  // Proactive throttle for the Notion API (~3 req/s per integration).
+  notionMaxRps: Number(optional("NOTION_MAX_RPS", "3")),
   notionDbs: {
     engineeringDocs: optional("NOTION_ENGINEERING_DOCS_DATABASE_ID"),
     services: optional("NOTION_SERVICES_DATABASE_ID"),

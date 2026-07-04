@@ -3,19 +3,20 @@ import {
   type PatchAction,
   type NotionWriteResult,
 } from "@shadow/shared";
-import { notion, richTextToPlain, callout, code, todo, bullet, toggle, paragraph } from "../../integrations/notion.js";
+import { notion, notionLimiter, richTextToPlain, callout, code, todo, bullet, toggle, paragraph } from "../../integrations/notion.js";
 import { env } from "../../env.js";
 import { prisma } from "../../db/prisma.js";
 import { logRunEvent } from "../audit.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Retry Notion calls on rate limits (429) and transient 5xx with linear backoff. */
+/** Retry Notion calls on rate limits (429) and transient 5xx with linear backoff.
+ *  Every attempt is routed through the shared limiter to stay under ~3 req/s. */
 async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
-      return await fn();
+      return await notionLimiter.schedule(fn);
     } catch (err) {
       lastErr = err;
       const status = (err as { status?: number }).status ?? 0;
