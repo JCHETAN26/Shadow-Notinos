@@ -87,6 +87,8 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
       pr: prContext,
       relatedDocs: related,
       targetPage: { pageId: target.pageId, title: target.title, headings },
+      baseBranch: prContext.baseBranch ?? run.baseBranch,
+      releaseBranch: env.releaseBranch,
     });
 
     // The planner may conclude the docs need no update. That's a healthy
