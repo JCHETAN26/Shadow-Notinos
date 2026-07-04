@@ -1,7 +1,11 @@
 import { Client } from "@notionhq/client";
 import { env } from "../env.js";
+import { createRateLimiter } from "./rate-limit.js";
 
 let client: Client | null = null;
+
+/** Process-wide throttle so all Notion calls stay under the API's rate limit. */
+export const notionLimiter = createRateLimiter(env.notionMaxRps);
 
 /** Lazily construct the Notion client so commands that don't touch Notion don't require the key. */
 export function notion(): Client {
