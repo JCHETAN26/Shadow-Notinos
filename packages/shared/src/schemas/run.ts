@@ -50,6 +50,8 @@ export const RunEventTypeSchema = z.enum([
   "block_write_started",
   "block_write_completed",
   "write_failed",
+  "patch_promoted",
+  "patch_dismissed",
   "run_completed",
   "run_no_changes",
   "run_failed",

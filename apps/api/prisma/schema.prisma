@@ -29,6 +29,8 @@ enum PatchPlanStatus {
   rejected
   applied
   failed
+  graduated
+  dismissed
 }
 
 enum PatchActionStatus {
@@ -113,6 +115,9 @@ model PatchPlan {
   targetPageId String
   status       PatchPlanStatus @default(proposed)
   patchJson    Json
+  // Notion block ids written under the "Pending changes" toggle for a pending
+  // plan. Used to promote (re-apply to body + delete) or dismiss (delete) it.
+  pendingBlockIds String[]     @default([])
   createdAt    DateTime        @default(now())
   approvedAt   DateTime?
   appliedAt    DateTime?
