@@ -30,6 +30,26 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
   throw lastErr;
 }
 
+/** Turn a raw Notion API error into a clear, actionable message. Access being
+ *  revoked mid-run (403) or a page being deleted/unshared (404) are expected
+ *  failure modes — surface them plainly instead of a generic error. */
+export function describeNotionError(err: unknown): string {
+  const status = (err as { status?: number }).status;
+  const base = (err as Error).message ?? String(err);
+  switch (status) {
+    case 401:
+      return `Notion auth failed (401) — check NOTION_API_KEY. ${base}`;
+    case 403:
+      return `Notion access denied (403) — the integration's access to this page was likely revoked. ${base}`;
+    case 404:
+      return `Notion page not found (404) — it may have been deleted or unshared from the integration. ${base}`;
+    case 429:
+      return `Notion rate limit hit (429) after retries. ${base}`;
+    default:
+      return base;
+  }
+}
+
 const lastSegment = (heading: string) => heading.split(">").pop()?.trim() ?? heading;
 
 /** Find a top-level heading block on the page whose text matches the target heading. */
@@ -245,7 +265,7 @@ export async function applyPatchPlan(planId: string): Promise<ApplyResult> {
       });
     } catch (err) {
       failed += 1;
-      const message = (err as Error).message;
+      const message = describeNotionError(err);
       results.push({ actionType: action.type, ok: false, error: message });
       await prisma.patchAction.update({
         where: { id: row.id },
@@ -320,8 +340,9 @@ export async function promotePendingPlan(planId: string): Promise<ApplyResult> {
       applied += 1;
     } catch (err) {
       failed += 1;
-      results.push({ actionType: action.type, ok: false, error: (err as Error).message });
-      await logRunEvent(runId, "write_failed", `promote ${action.type}: ${(err as Error).message}`);
+      const message = describeNotionError(err);
+      results.push({ actionType: action.type, ok: false, error: message });
+      await logRunEvent(runId, "write_failed", `promote ${action.type}: ${message}`);
     }
   }
 

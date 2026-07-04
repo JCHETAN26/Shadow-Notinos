@@ -78,11 +78,20 @@ function neutralizeDelimiters(s: string): string {
   return s.replace(/<\/?untrusted_pr_content>/gi, "[tag removed]");
 }
 
+/** Hard ceiling on the changed-files text sent to the model. Per-file patches
+ *  are already trimmed upstream; this bounds the *total* so a massive PR (5k+
+ *  lines, hundreds of files) can't blow past the context window. */
+const MAX_DIFF_CHARS = 16_000;
+
 export function buildUserPrompt(input: PlannerInput): string {
   const { pr, relatedDocs, targetPage } = input;
-  const files = pr.filesChanged
+  let files = pr.filesChanged
     .map((f) => `- ${f.filename} (${f.status}, +${f.additions}/-${f.deletions})\n${f.patchExcerpt ?? ""}`)
     .join("\n");
+  if (files.length > MAX_DIFF_CHARS) {
+    const omitted = files.length - MAX_DIFF_CHARS;
+    files = files.slice(0, MAX_DIFF_CHARS) + `\n… (diff truncated: ${omitted} more chars omitted to stay within the model context)`;
+  }
   const docs = relatedDocs
     .map((d) => `- ${d.title} (score ${d.score.toFixed(2)}) — sections: ${d.matchingSections.map((s) => s.headingPath).filter(Boolean).join("; ")}`)
     .join("\n");
