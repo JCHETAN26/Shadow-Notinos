@@ -42,6 +42,13 @@ export default async function RunDetailPage({
           >
             {run!.repo}#{run!.prNumber} ↗
           </a>
+          {run!.baseBranch && (
+            <div className="mt-1 font-mono text-xs text-muted-foreground">
+              <span className="rounded bg-muted px-1.5 py-0.5">
+                {run!.headBranch ?? "?"} → {run!.baseBranch}
+              </span>
+            </div>
+          )}
         </div>
         <StatusBadge status={run!.status} />
       </header>

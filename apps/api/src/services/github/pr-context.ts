@@ -32,6 +32,8 @@ export interface RunRef {
   prTitle: string;
   prUrl: string;
   author: string | null;
+  baseBranch?: string | null;
+  headBranch?: string | null;
 }
 
 /** Fetch PR context from the live GitHub API. */
@@ -62,6 +64,8 @@ async function fetchLive(run: RunRef): Promise<PullRequestContext> {
     author: pr.user?.login ?? run.author ?? "unknown",
     url: pr.html_url,
     mergedAt: pr.merged_at,
+    baseBranch: pr.base?.ref ?? run.baseBranch ?? null,
+    headBranch: pr.head?.ref ?? run.headBranch ?? null,
     labels: pr.labels.map((l) => (typeof l === "string" ? l : l.name ?? "")).filter(Boolean),
     commits: commits.map((c) => c.commit.message.split("\n")[0]),
     filesChanged: changedFiles,
@@ -89,6 +93,8 @@ function fetchDemo(run: RunRef): PullRequestContext {
     author: fx.pull_request.user.login,
     url: fx.pull_request.html_url,
     mergedAt: fx.pull_request.merged_at,
+    baseBranch: run.baseBranch ?? fx.pull_request.base.ref,
+    headBranch: run.headBranch ?? fx.pull_request.head.ref,
     labels: fx.pull_request.labels.map((l) => l.name),
     commits: [...fx._demoCommits],
     filesChanged: changedFiles,

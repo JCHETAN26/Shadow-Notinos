@@ -37,6 +37,8 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
       prTitle: run.prTitle,
       prUrl: run.prUrl,
       author: run.author,
+      baseBranch: run.baseBranch,
+      headBranch: run.headBranch,
     });
 
     await prisma.agentRun.update({

@@ -20,6 +20,10 @@ export const GitHubMergedPREventSchema = z.object({
         .array(z.object({ name: z.string() }).partial())
         .optional()
         .default([]),
+      // Branch refs. `base` is where the PR merged into (main, dev, release/*),
+      // `head` is the source branch. Drives v2 branch-aware doc placement.
+      base: z.object({ ref: z.string() }).partial().passthrough().optional(),
+      head: z.object({ ref: z.string() }).partial().passthrough().optional(),
     })
     .passthrough(),
   repository: z
@@ -55,6 +59,10 @@ export const PullRequestContextSchema = z.object({
   author: z.string().default("unknown"),
   url: z.string(),
   mergedAt: z.string().nullable().optional(),
+  /** Branch the PR merged into (e.g. main, dev). Null when unknown. */
+  baseBranch: z.string().nullable().optional(),
+  /** Source branch of the PR. Null when unknown. */
+  headBranch: z.string().nullable().optional(),
   labels: z.array(z.string()).default([]),
   commits: z.array(z.string()).default([]),
   filesChanged: z.array(ChangedFileSchema).default([]),

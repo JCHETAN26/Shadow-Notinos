@@ -44,6 +44,8 @@ model AgentRun {
   prTitle       String
   prUrl         String
   author        String?
+  baseBranch    String?
+  headBranch    String?
   status        AgentRunStatus @default(queued)
   diffSummary   String?
   impactSummary String?
