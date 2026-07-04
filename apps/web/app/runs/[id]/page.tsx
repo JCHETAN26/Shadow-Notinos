@@ -22,7 +22,6 @@ export default async function RunDetailPage({
     notFound();
   }
 
-  const plan = run!.patchPlans[0];
   const pr = run!.prContext;
 
   return (
@@ -98,43 +97,45 @@ export default async function RunDetailPage({
       )}
 
       {/* Proposed actions */}
-      {plan ? (
-        <Section title={`Proposed changes → ${plan.patchJson.targetPageTitle}`}>
-          {plan.patchJson.placement === "pending" && (
-            <div className="mb-3 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-900">
-              Staged under <span className="font-medium">“Pending changes”</span> — this PR
-              merged into{" "}
-              <span className="font-mono">{plan.patchJson.baseBranch ?? "a non-release branch"}</span>,
-              so it won’t touch the live doc body until it ships.
-            </div>
-          )}
-          <div className="space-y-3">
-            {plan.patchJson.actions.map((a, i) => (
-              <ActionView key={i} action={a} />
-            ))}
-          </div>
-
-          {plan.patchJson.risks.length > 0 && (
-            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-              <div className="text-xs font-medium text-amber-800">Risks</div>
-              <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-amber-900">
-                {plan.patchJson.risks.map((r, i) => (
-                  <li key={i}>{r}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div className="mt-6">
-            {plan.status === "proposed" ? (
-              <ApprovalActions runId={run!.id} />
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                This patch is <span className="font-medium">{plan.status}</span>.
-              </p>
+      {run!.patchPlans.length > 0 ? (
+        run!.patchPlans.map((plan) => (
+          <Section key={plan.id} title={`Proposed changes → ${plan.patchJson.targetPageTitle}`}>
+            {plan.patchJson.placement === "pending" && (
+              <div className="mb-3 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-900">
+                Staged under <span className="font-medium">“Pending changes”</span> — this PR
+                merged into{" "}
+                <span className="font-mono">{plan.patchJson.baseBranch ?? "a non-release branch"}</span>,
+                so it won’t touch the live doc body until it ships.
+              </div>
             )}
-          </div>
-        </Section>
+            <div className="space-y-3">
+              {plan.patchJson.actions.map((a, i) => (
+                <ActionView key={i} action={a} />
+              ))}
+            </div>
+
+            {plan.patchJson.risks.length > 0 && (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                <div className="text-xs font-medium text-amber-800">Risks</div>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-amber-900">
+                  {plan.patchJson.risks.map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="mt-6">
+              {plan.status === "proposed" ? (
+                <ApprovalActions planId={plan.id} />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  This patch is <span className="font-medium">{plan.status}</span>.
+                </p>
+              )}
+            </div>
+          </Section>
+        ))
       ) : run!.status === "no_changes" ? (
         <Section title="Proposed changes">
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">

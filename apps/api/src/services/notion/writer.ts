@@ -253,17 +253,13 @@ export async function applyPatchPlan(planId: string): Promise<ApplyResult> {
     where: { id: planId },
     data: { status: ok ? "applied" : "failed", appliedAt: new Date() },
   });
-  await prisma.agentRun.update({
-    where: { id: runId },
-    data: { status: ok ? "applied" : "failed" },
-  });
+  // Run-level status is owned by the caller (a run may hold several plans).
   await logRunEvent(
     runId,
     ok ? "block_write_completed" : "write_failed",
     `Applied ${applied}/${plan.actions.length} action(s)` +
       `${skipped ? `, ${skipped} skipped` : ""}${failed ? `, ${failed} failed` : ""}`,
   );
-  await logRunEvent(runId, "run_completed", ok ? "Run complete" : "Run completed with write failures");
 
   return { ok, applied, failed, results };
 }

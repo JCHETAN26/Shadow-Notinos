@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { API_URL } from "@/lib/api";
 
-export function ApprovalActions({ runId }: { runId: string }) {
+export function ApprovalActions({ planId }: { planId: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -13,7 +13,7 @@ export function ApprovalActions({ runId }: { runId: string }) {
     setBusy(kind);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/runs/${runId}/${kind}`, { method: "POST" });
+      const res = await fetch(`${API_URL}/api/patches/${planId}/${kind}`, { method: "POST" });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? `Request failed (${res.status})`);

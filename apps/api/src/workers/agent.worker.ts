@@ -11,6 +11,9 @@ import { savePatchPlan } from "../services/patch-plans.js";
 import { env } from "../env.js";
 import type { PullRequestContext } from "@shadow/shared";
 
+/** Cap on how many doc pages one PR may propose against (bounds LLM calls). */
+const MAX_TARGET_PAGES = 3;
+
 /** Build a retrieval query from the parts of a PR most likely to name affected docs. */
 function buildSearchQuery(pr: PullRequestContext): string {
   const files = pr.filesChanged.map((f) => f.filename).join(" ");
@@ -83,9 +86,8 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
       { query, pages: related.map((r) => ({ title: r.title, score: r.score })) },
     );
 
-    // --- Phase 6: generate the documentation patch plan ---
-    const target = related[0];
-    if (!target) {
+    // --- Phase 6: generate a patch plan per affected doc page (multi-page) ---
+    if (related.length === 0) {
       await prisma.agentRun.update({ where: { id: runId }, data: { status: "failed" } });
       await logRunEvent(runId, "run_failed", "No related docs to plan against — seed + index the workspace first.");
       return;
@@ -96,43 +98,64 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
       return;
     }
 
-    const headings = await getPageHeadings(target.pageId);
-    const plan = await generatePatchPlan({
-      runId,
-      pr: prContext,
-      relatedDocs: related,
-      targetPage: { pageId: target.pageId, title: target.title, headings },
-      baseBranch: prContext.baseBranch ?? run.baseBranch,
-      releaseBranch: env.releaseBranch,
-    });
+    // Plan against the most-relevant pages: always the top hit, plus any others
+    // scoring within half of it (bounds LLM calls; the planner no-ops the rest).
+    const topScore = related[0]!.score;
+    const targets = related
+      .slice(0, MAX_TARGET_PAGES)
+      .filter((r, i) => i === 0 || r.score >= topScore * 0.5);
 
-    // The planner may conclude the docs need no update. That's a healthy
-    // terminal state (no_changes) — close the run cleanly, propose nothing.
-    if (plan.actions.length === 0) {
-      await prisma.agentRun.update({
-        where: { id: runId },
-        data: { status: "no_changes", impactSummary: plan.summary },
+    const proposed: Array<{ title: string; actions: number }> = [];
+    for (const target of targets) {
+      const headings = await getPageHeadings(target.pageId);
+      const plan = await generatePatchPlan({
+        runId,
+        pr: prContext,
+        relatedDocs: related,
+        targetPage: { pageId: target.pageId, title: target.title, headings },
+        baseBranch: prContext.baseBranch ?? run.baseBranch,
+        releaseBranch: env.releaseBranch,
       });
+
+      // Per page, the planner may conclude nothing needs changing — skip it.
+      if (plan.actions.length === 0) {
+        await logRunEvent(
+          runId,
+          "run_no_changes",
+          `No changes needed for "${target.title}": ${plan.summary}`,
+          { confidence: plan.confidence },
+        );
+        continue;
+      }
+
+      const planId = await savePatchPlan(plan);
+      proposed.push({ title: plan.targetPageTitle, actions: plan.actions.length });
       await logRunEvent(
         runId,
-        "run_no_changes",
-        `No documentation changes needed for "${target.title}": ${plan.summary}`,
-        { confidence: plan.confidence },
+        "patch_generated",
+        `Proposed ${plan.actions.length} action(s) for "${plan.targetPageTitle}" (confidence ${plan.confidence.toFixed(2)})`,
+        { planId, actions: plan.actions.map((a) => a.type), risks: plan.risks },
       );
+    }
+
+    // Every candidate page came back clean → close the run as no_changes.
+    if (proposed.length === 0) {
+      await prisma.agentRun.update({
+        where: { id: runId },
+        data: { status: "no_changes", impactSummary: "No documentation changes needed for this PR." },
+      });
+      await logRunEvent(runId, "run_no_changes", "No documentation changes needed for this PR.");
       return;
     }
 
-    const planId = await savePatchPlan(plan);
+    const impactSummary =
+      proposed.length === 1
+        ? `${proposed[0]!.actions} change(s) → ${proposed[0]!.title}`
+        : `${proposed.length} pages: ${proposed.map((p) => p.title).join(", ")}`;
     await prisma.agentRun.update({
       where: { id: runId },
-      data: { status: "waiting_approval", impactSummary: plan.summary },
+      data: { status: "waiting_approval", impactSummary },
     });
-    await logRunEvent(
-      runId,
-      "patch_generated",
-      `Proposed ${plan.actions.length} action(s) for "${plan.targetPageTitle}" (confidence ${plan.confidence.toFixed(2)})`,
-      { planId, actions: plan.actions.map((a) => a.type), risks: plan.risks },
-    );
   } catch (err) {
     await prisma.agentRun.update({ where: { id: runId }, data: { status: "failed" } });
     await logRunEvent(runId, "run_failed", (err as Error).message);
