@@ -27,6 +27,9 @@ export const env = {
 
   githubWebhookSecret: optional("GITHUB_WEBHOOK_SECRET"),
   githubToken: optional("GITHUB_TOKEN"),
+  // The branch whose merges edit the live doc body. Merges into any other branch
+  // are staged under a "Pending changes" toggle instead. (v2 branch-awareness)
+  releaseBranch: optional("RELEASE_BRANCH", "main"),
 
   anthropicApiKey: optional("ANTHROPIC_API_KEY"),
 

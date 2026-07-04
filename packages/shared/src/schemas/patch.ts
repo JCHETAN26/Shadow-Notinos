@@ -58,6 +58,16 @@ export const PatchActionSchema = z.discriminatedUnion("type", [
 export type PatchAction = z.infer<typeof PatchActionSchema>;
 export type PatchActionType = PatchAction["type"];
 
+/**
+ * Where an approved plan lands in the doc:
+ *  - `body`    — the PR merged into the release branch; edit the live page body.
+ *  - `pending` — the PR merged into another branch; stage the delta under the
+ *                page's "Pending changes" toggle (don't claim it shipped).
+ * Server-controlled (derived from the base branch); never trusted from the model.
+ */
+export const PatchPlacementSchema = z.enum(["body", "pending"]);
+export type PatchPlacement = z.infer<typeof PatchPlacementSchema>;
+
 export const DocPatchPlanSchema = z.object({
   runId: z.string(),
   targetPageId: z.string(),
@@ -66,5 +76,9 @@ export const DocPatchPlanSchema = z.object({
   summary: z.string(),
   risks: z.array(z.string()),
   actions: z.array(PatchActionSchema),
+  /** Base branch the PR merged into. Null when unknown. */
+  baseBranch: z.string().nullable().optional(),
+  /** Body vs pending-toggle. Defaults to body (release-branch behavior). */
+  placement: PatchPlacementSchema.default("body"),
 });
 export type DocPatchPlan = z.infer<typeof DocPatchPlanSchema>;

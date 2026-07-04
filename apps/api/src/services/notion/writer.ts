@@ -3,7 +3,7 @@ import {
   type PatchAction,
   type NotionWriteResult,
 } from "@shadow/shared";
-import { notion, richTextToPlain, callout, code, todo, bullet } from "../../integrations/notion.js";
+import { notion, richTextToPlain, callout, code, todo, bullet, toggle, paragraph } from "../../integrations/notion.js";
 import { env } from "../../env.js";
 import { prisma } from "../../db/prisma.js";
 import { logRunEvent } from "../audit.js";
@@ -46,6 +46,34 @@ async function findHeadingBlockId(pageId: string, targetHeading: string): Promis
   return null;
 }
 
+/** Title of the single grouped toggle that holds all not-yet-shipped deltas. */
+const PENDING_TOGGLE_TITLE = "Pending changes";
+
+/**
+ * Find the page's "Pending changes" toggle, creating it once if absent. All
+ * branch deltas that haven't reached the release branch are nested inside it, so
+ * the doc body stays honest about production while nothing is lost.
+ */
+async function ensurePendingToggle(pageId: string): Promise<string> {
+  const want = PENDING_TOGGLE_TITLE.toLowerCase();
+  const res = await withRetry(() => notion().blocks.children.list({ block_id: pageId, page_size: 100 }));
+  for (const block of res.results) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const b = block as any;
+    if (b.type === "toggle" && richTextToPlain(b.toggle?.rich_text).trim().toLowerCase() === want) {
+      return b.id as string;
+    }
+  }
+  const created = await withRetry(() =>
+    notion().blocks.children.append({
+      block_id: pageId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      children: [toggle(PENDING_TOGGLE_TITLE)] as any,
+    }),
+  );
+  return (created.results[0] as { id: string }).id;
+}
+
 /** Build the Notion block(s) for an append-style action. */
 function blocksFor(action: PatchAction): Array<Record<string, unknown>> {
   switch (action.type) {
@@ -62,8 +90,19 @@ function blocksFor(action: PatchAction): Array<Record<string, unknown>> {
   }
 }
 
+interface ApplyOpts {
+  /** When set, append_* deltas are nested here instead of the doc body. */
+  pendingToggleId?: string;
+  /** Label prepended to a pending delta so it's traceable to its branch/PR. */
+  label?: string;
+}
+
 /** Apply a single action to Notion and return a result. */
-async function applyAction(plan: DocPatchPlan, action: PatchAction): Promise<NotionWriteResult> {
+async function applyAction(
+  plan: DocPatchPlan,
+  action: PatchAction,
+  opts: ApplyOpts = {},
+): Promise<NotionWriteResult> {
   const client = notion();
 
   if (action.type === "create_review_task") {
@@ -97,7 +136,25 @@ async function applyAction(plan: DocPatchPlan, action: PatchAction): Promise<Not
     return { actionType: action.type, ok: true, notionId: plan.targetPageId };
   }
 
-  // append_* actions: insert after the matching heading, or at the end of the page.
+  // Pending placement: nest the delta (with a branch/PR label) inside the page's
+  // "Pending changes" toggle instead of editing the live body.
+  if (opts.pendingToggleId) {
+    const children = [
+      ...(opts.label ? [paragraph(opts.label)] : []),
+      ...blocksFor(action),
+    ];
+    const res = await withRetry(() =>
+      client.blocks.children.append({
+        block_id: opts.pendingToggleId!,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        children: children as any,
+      }),
+    );
+    const created = res.results[0] as { id?: string } | undefined;
+    return { actionType: action.type, ok: true, notionId: created?.id };
+  }
+
+  // Body placement: insert after the matching heading, or at the end of the page.
   const headingId = await findHeadingBlockId(plan.targetPageId, action.targetHeading);
   const children = blocksFor(action);
   const res = await withRetry(() =>
@@ -133,16 +190,46 @@ export async function applyPatchPlan(planId: string): Promise<ApplyResult> {
 
   const runId = plan.agentRunId;
   const doc = plan.patchJson as unknown as DocPatchPlan;
+  const placement = doc.placement ?? "body";
   const results: NotionWriteResult[] = [];
   let applied = 0;
   let failed = 0;
+  let skipped = 0;
 
-  await logRunEvent(runId, "block_write_started", `Applying ${plan.actions.length} action(s)`);
+  // Pending deltas carry a branch/PR label and are grouped under one toggle.
+  const run = await prisma.agentRun.findUnique({ where: { id: runId } });
+  const baseBranch = doc.baseBranch ?? run?.baseBranch ?? null;
+  const prNumber = run?.prNumber;
+  const pendingToggleId =
+    placement === "pending" ? await ensurePendingToggle(doc.targetPageId) : undefined;
+
+  await logRunEvent(
+    runId,
+    "block_write_started",
+    placement === "pending"
+      ? `Staging ${plan.actions.length} change(s) under "${PENDING_TOGGLE_TITLE}" (base: ${baseBranch ?? "?"})`
+      : `Applying ${plan.actions.length} action(s)`,
+  );
 
   for (const row of plan.actions) {
     const action = row.notionPayload as unknown as PatchAction;
+
+    // Under pending placement, never restamp the live page's status — the
+    // production doc isn't outdated just because an unreleased branch changed.
+    if (placement === "pending" && action.type === "update_doc_status") {
+      skipped += 1;
+      results.push({ actionType: action.type, ok: true });
+      await prisma.patchAction.update({ where: { id: row.id }, data: { status: "skipped" } });
+      continue;
+    }
+
+    const label =
+      placement === "pending" && "targetHeading" in action
+        ? `${baseBranch ?? "branch"} · PR #${prNumber ?? "?"} → ${action.targetHeading}`
+        : undefined;
+
     try {
-      const result = await applyAction(doc, action);
+      const result = await applyAction(doc, action, { pendingToggleId, label });
       results.push(result);
       applied += 1;
       await prisma.patchAction.update({
@@ -173,7 +260,8 @@ export async function applyPatchPlan(planId: string): Promise<ApplyResult> {
   await logRunEvent(
     runId,
     ok ? "block_write_completed" : "write_failed",
-    `Applied ${applied}/${plan.actions.length} action(s)${failed ? `, ${failed} failed` : ""}`,
+    `Applied ${applied}/${plan.actions.length} action(s)` +
+      `${skipped ? `, ${skipped} skipped` : ""}${failed ? `, ${failed} failed` : ""}`,
   );
   await logRunEvent(runId, "run_completed", ok ? "Run complete" : "Run completed with write failures");
 

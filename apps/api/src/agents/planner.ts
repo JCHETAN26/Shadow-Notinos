@@ -17,6 +17,10 @@ export interface PlannerInput {
   pr: PullRequestContext;
   relatedDocs: SearchResult[];
   targetPage: TargetPage;
+  /** Base branch the PR merged into (drives body-vs-pending placement). */
+  baseBranch?: string | null;
+  /** The branch whose merges edit the live body. Anything else → pending. */
+  releaseBranch: string;
 }
 
 /** A function that takes (system, user) prompts and returns the model's raw text. Injectable for tests. */
@@ -109,6 +113,16 @@ export function extractJson(text: string): unknown {
   return JSON.parse(candidate.slice(start, end + 1));
 }
 
+/** Decide where an approved plan lands: release-branch merges edit the body,
+ *  everything else is staged under the page's "Pending changes" toggle. */
+export function derivePlacement(
+  baseBranch: string | null | undefined,
+  releaseBranch: string,
+): "body" | "pending" {
+  if (!baseBranch) return "body"; // unknown branch: treat as body (safe default)
+  return baseBranch === releaseBranch ? "body" : "pending";
+}
+
 /** Assemble the full plan, forcing server-controlled identity fields (grounding). */
 function assemble(input: PlannerInput, raw: unknown): unknown {
   const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -117,6 +131,8 @@ function assemble(input: PlannerInput, raw: unknown): unknown {
     runId: input.runId,
     targetPageId: input.targetPage.pageId,
     targetPageTitle: input.targetPage.title,
+    baseBranch: input.baseBranch ?? null,
+    placement: derivePlacement(input.baseBranch, input.releaseBranch),
   };
 }
 

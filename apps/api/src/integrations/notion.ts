@@ -67,6 +67,15 @@ export function todo(text: string, checked = false) {
   };
 }
 
+/** Build a collapsible toggle block with optional nested children. */
+export function toggle(title: string, children: Array<Record<string, unknown>> = []) {
+  return {
+    object: "block" as const,
+    type: "toggle" as const,
+    toggle: { rich_text: rt(title), children },
+  };
+}
+
 /** Flatten a Notion rich_text array to plain text. */
 export function richTextToPlain(
   richText: Array<{ plain_text?: string }> | undefined,
