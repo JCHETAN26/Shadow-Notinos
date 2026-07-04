@@ -3,7 +3,7 @@ import { AGENT_QUEUE_NAME, type AgentJobData } from "@shadow/shared";
 import { prisma } from "../db/prisma.js";
 import { connection } from "../queue.js";
 import { logRunEvent } from "../services/audit.js";
-import { getPRContext } from "../services/github/pr-context.js";
+import { getPRContext, hasMeaningfulDiff } from "../services/github/pr-context.js";
 import { searchDocs, getPageHeadings } from "../services/notion/search.js";
 import { parseTriggerPaths, matchesAnyPath } from "../services/github/path-filter.js";
 import { generatePatchPlan } from "../agents/planner.js";
@@ -55,6 +55,20 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
       `Fetched ${prContext.filesChanged.length} changed file(s), ${prContext.commits.length} commit(s)`,
       { files: prContext.filesChanged.map((f) => f.filename) },
     );
+
+    // --- Ghost PR guard: don't pay the LLM for empty or binary-only diffs ---
+    if (!hasMeaningfulDiff(prContext.filesChanged)) {
+      await prisma.agentRun.update({
+        where: { id: runId },
+        data: { status: "no_changes", impactSummary: "No textual code changes to document (empty or binary-only PR)." },
+      });
+      await logRunEvent(
+        runId,
+        "run_skipped",
+        "Skipped before the planner: no meaningful textual diff (empty or binary-only PR).",
+      );
+      return;
+    }
 
     // --- Path gating: skip PRs that touch nothing in the configured allowlist ---
     const triggerPaths = parseTriggerPaths(env.docTriggerPaths);
