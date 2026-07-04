@@ -5,6 +5,7 @@ import { connection } from "../queue.js";
 import { logRunEvent } from "../services/audit.js";
 import { getPRContext } from "../services/github/pr-context.js";
 import { searchDocs, getPageHeadings } from "../services/notion/search.js";
+import { parseTriggerPaths, matchesAnyPath } from "../services/github/path-filter.js";
 import { generatePatchPlan } from "../agents/planner.js";
 import { savePatchPlan } from "../services/patch-plans.js";
 import { env } from "../env.js";
@@ -51,6 +52,20 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
       `Fetched ${prContext.filesChanged.length} changed file(s), ${prContext.commits.length} commit(s)`,
       { files: prContext.filesChanged.map((f) => f.filename) },
     );
+
+    // --- Path gating: skip PRs that touch nothing in the configured allowlist ---
+    const triggerPaths = parseTriggerPaths(env.docTriggerPaths);
+    const filenames = prContext.filesChanged.map((f) => f.filename);
+    if (!matchesAnyPath(filenames, triggerPaths)) {
+      await prisma.agentRun.update({ where: { id: runId }, data: { status: "no_changes" } });
+      await logRunEvent(
+        runId,
+        "run_skipped",
+        `Skipped: no changed files match DOC_TRIGGER_PATHS (${triggerPaths.join(", ")})`,
+        { triggerPaths, filenames },
+      );
+      return;
+    }
 
     // --- Phase 5: retrieve related Notion docs ---
     const query = buildSearchQuery(prContext);

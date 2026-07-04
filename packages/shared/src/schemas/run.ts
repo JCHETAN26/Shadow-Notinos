@@ -44,6 +44,7 @@ export const RunEventTypeSchema = z.enum([
   "pr_fetched",
   "docs_searched",
   "patch_generated",
+  "run_skipped",
   "patch_approved",
   "patch_rejected",
   "block_write_started",
