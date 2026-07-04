@@ -97,12 +97,16 @@ interface ApplyOpts {
   label?: string;
 }
 
+/** Result plus, for pending deltas, every Notion block id created (so the whole
+ *  entry can be deleted later on promote/dismiss). */
+type ApplyActionResult = NotionWriteResult & { createdIds?: string[] };
+
 /** Apply a single action to Notion and return a result. */
 async function applyAction(
   plan: DocPatchPlan,
   action: PatchAction,
   opts: ApplyOpts = {},
-): Promise<NotionWriteResult> {
+): Promise<ApplyActionResult> {
   const client = notion();
 
   if (action.type === "create_review_task") {
@@ -150,8 +154,8 @@ async function applyAction(
         children: children as any,
       }),
     );
-    const created = res.results[0] as { id?: string } | undefined;
-    return { actionType: action.type, ok: true, notionId: created?.id };
+    const createdIds = res.results.map((b) => (b as { id: string }).id);
+    return { actionType: action.type, ok: true, notionId: createdIds[0], createdIds };
   }
 
   // Body placement: insert after the matching heading, or at the end of the page.
@@ -192,6 +196,7 @@ export async function applyPatchPlan(planId: string): Promise<ApplyResult> {
   const doc = plan.patchJson as unknown as DocPatchPlan;
   const placement = doc.placement ?? "body";
   const results: NotionWriteResult[] = [];
+  const stagedBlockIds: string[] = [];
   let applied = 0;
   let failed = 0;
   let skipped = 0;
@@ -231,6 +236,7 @@ export async function applyPatchPlan(planId: string): Promise<ApplyResult> {
     try {
       const result = await applyAction(doc, action, { pendingToggleId, label });
       results.push(result);
+      if (result.createdIds) stagedBlockIds.push(...result.createdIds);
       applied += 1;
       await prisma.patchAction.update({
         where: { id: row.id },
@@ -251,7 +257,12 @@ export async function applyPatchPlan(planId: string): Promise<ApplyResult> {
   const ok = failed === 0;
   await prisma.patchPlan.update({
     where: { id: planId },
-    data: { status: ok ? "applied" : "failed", appliedAt: new Date() },
+    data: {
+      status: ok ? "applied" : "failed",
+      appliedAt: new Date(),
+      // Remember what we staged so a human can later promote or dismiss it.
+      ...(placement === "pending" ? { pendingBlockIds: stagedBlockIds } : {}),
+    },
   });
   // Run-level status is owned by the caller (a run may hold several plans).
   await logRunEvent(
@@ -262,4 +273,79 @@ export async function applyPatchPlan(planId: string): Promise<ApplyResult> {
   );
 
   return { ok, applied, failed, results };
+}
+
+/** Best-effort delete of the Notion blocks staged under the pending toggle. */
+async function deletePendingBlocks(ids: string[]): Promise<void> {
+  const client = notion();
+  for (const id of ids) {
+    try {
+      await withRetry(() => client.blocks.delete({ block_id: id }));
+    } catch {
+      // Block may already be gone (user deleted it, or a prior partial run) — ignore.
+    }
+  }
+}
+
+/**
+ * Promote a staged pending plan into the live doc body: re-apply its content
+ * edits to the body, delete the staged toggle blocks, and mark it graduated.
+ * The human is the graduation signal (manual, on-brand with always-approve).
+ */
+export async function promotePendingPlan(planId: string): Promise<ApplyResult> {
+  const plan = await prisma.patchPlan.findUnique({ where: { id: planId }, include: { actions: true } });
+  if (!plan) throw new Error(`Patch plan ${planId} not found.`);
+  if (!env.notionApiKey) throw new Error("NOTION_API_KEY is not set — cannot write to Notion.");
+  const doc = plan.patchJson as unknown as DocPatchPlan;
+  if ((doc.placement ?? "body") !== "pending" || plan.status !== "applied") {
+    throw new Error("Only a staged (applied) pending plan can be promoted.");
+  }
+
+  const runId = plan.agentRunId;
+  const results: NotionWriteResult[] = [];
+  let applied = 0;
+  let failed = 0;
+
+  await logRunEvent(runId, "block_write_started", `Promoting staged changes for "${doc.targetPageTitle}" into the body`);
+
+  // Re-apply only the content edits to the body. Review tasks / status updates
+  // were already handled at staging time, so we skip non-content actions here.
+  for (const row of plan.actions) {
+    const action = row.notionPayload as unknown as PatchAction;
+    if (!("targetHeading" in action)) continue;
+    try {
+      const r = await applyAction(doc, action, {}); // body placement
+      results.push(r);
+      applied += 1;
+    } catch (err) {
+      failed += 1;
+      results.push({ actionType: action.type, ok: false, error: (err as Error).message });
+      await logRunEvent(runId, "write_failed", `promote ${action.type}: ${(err as Error).message}`);
+    }
+  }
+
+  await deletePendingBlocks(plan.pendingBlockIds);
+
+  const ok = failed === 0;
+  await prisma.patchPlan.update({ where: { id: planId }, data: { status: "graduated", pendingBlockIds: [] } });
+  await logRunEvent(
+    runId,
+    "patch_promoted",
+    `Promoted ${applied} change(s) for "${doc.targetPageTitle}" into the body${failed ? `, ${failed} failed` : ""}`,
+  );
+  return { ok, applied, failed, results };
+}
+
+/** Dismiss a staged pending plan: delete its toggle blocks and mark it dismissed. */
+export async function dismissPendingPlan(planId: string): Promise<void> {
+  const plan = await prisma.patchPlan.findUnique({ where: { id: planId } });
+  if (!plan) throw new Error(`Patch plan ${planId} not found.`);
+  if (!env.notionApiKey) throw new Error("NOTION_API_KEY is not set — cannot write to Notion.");
+  const doc = plan.patchJson as unknown as DocPatchPlan;
+  if ((doc.placement ?? "body") !== "pending" || plan.status !== "applied") {
+    throw new Error("Only a staged (applied) pending plan can be dismissed.");
+  }
+  await deletePendingBlocks(plan.pendingBlockIds);
+  await prisma.patchPlan.update({ where: { id: planId }, data: { status: "dismissed", pendingBlockIds: [] } });
+  await logRunEvent(plan.agentRunId, "patch_dismissed", `Dismissed staged changes for "${doc.targetPageTitle}"`);
 }

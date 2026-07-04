@@ -2,7 +2,7 @@ import { Router } from "express";
 import { DocPatchPlanSchema } from "@shadow/shared";
 import { prisma } from "../db/prisma.js";
 import { logRunEvent } from "../services/audit.js";
-import { applyPatchPlan } from "../services/notion/writer.js";
+import { applyPatchPlan, promotePendingPlan, dismissPendingPlan } from "../services/notion/writer.js";
 
 export const patchesRouter: Router = Router();
 
@@ -38,8 +38,8 @@ export async function recomputeRunStatus(runId: string): Promise<void> {
   let status: "waiting_approval" | "applied" | "failed" | "rejected";
   if (plans.some((p) => p.status === "proposed")) status = "waiting_approval";
   else if (plans.some((p) => p.status === "failed")) status = "failed";
-  else if (plans.some((p) => p.status === "applied")) status = "applied";
-  else status = "rejected";
+  else if (plans.some((p) => p.status === "applied" || p.status === "graduated")) status = "applied";
+  else status = "rejected"; // all rejected/dismissed
   await prisma.agentRun.update({ where: { id: runId }, data: { status } });
 }
 
@@ -99,6 +99,32 @@ patchesRouter.post("/patches/:planId/reject", async (req, res, next) => {
     await logRunEvent(runId, "patch_rejected", `Rejected ${plan.id}`);
     res.json({ ok: true, planId: plan.id, status: "rejected" });
   } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/patches/:planId/promote — move a staged pending delta into the body.
+patchesRouter.post("/patches/:planId/promote", async (req, res, next) => {
+  try {
+    const result = await promotePendingPlan(req.params.planId);
+    res.json({ ok: result.ok, planId: req.params.planId, result });
+  } catch (err) {
+    const message = (err as Error).message;
+    if (/not found/i.test(message)) { res.status(404).json({ error: message }); return; }
+    if (/Only a staged/i.test(message)) { res.status(409).json({ error: message }); return; }
+    next(err);
+  }
+});
+
+// POST /api/patches/:planId/dismiss — drop a staged pending delta without shipping it.
+patchesRouter.post("/patches/:planId/dismiss", async (req, res, next) => {
+  try {
+    await dismissPendingPlan(req.params.planId);
+    res.json({ ok: true, planId: req.params.planId, status: "dismissed" });
+  } catch (err) {
+    const message = (err as Error).message;
+    if (/not found/i.test(message)) { res.status(404).json({ error: message }); return; }
+    if (/Only a staged/i.test(message)) { res.status(409).json({ error: message }); return; }
     next(err);
   }
 });

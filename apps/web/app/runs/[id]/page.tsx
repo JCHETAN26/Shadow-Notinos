@@ -4,6 +4,7 @@ import { apiFetch } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionView } from "@/components/ActionView";
 import { ApprovalActions } from "@/components/ApprovalActions";
+import { GraduationActions } from "@/components/GraduationActions";
 import type { RunDetail } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -128,6 +129,8 @@ export default async function RunDetailPage({
             <div className="mt-6">
               {plan.status === "proposed" ? (
                 <ApprovalActions planId={plan.id} />
+              ) : plan.patchJson.placement === "pending" && plan.status === "applied" ? (
+                <GraduationActions planId={plan.id} />
               ) : (
                 <p className="text-sm text-muted-foreground">
                   This patch is <span className="font-medium">{plan.status}</span>.
