@@ -48,7 +48,9 @@ demoRouter.post("/demo/replay-github-event", async (req, res, next) => {
     const hasBody = req.body && Object.keys(req.body).length > 0;
     const payload = hasBody ? req.body : SAMPLE_MERGED_PR;
 
-    const outcome = await createRunFromEvent(payload);
+    // The demo replay intentionally bypasses idempotency so it can be run
+    // repeatedly against the same sample PR.
+    const outcome = await createRunFromEvent(payload, { force: true });
     if (!outcome.created) {
       res.status(422).json({ ok: false, reason: outcome.reason });
       return;
