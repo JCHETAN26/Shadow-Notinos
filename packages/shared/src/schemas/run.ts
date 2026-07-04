@@ -14,6 +14,9 @@ export const AgentRunStatusSchema = z.enum([
   "applying",
   "applied",
   "rejected",
+  // The planner looked at the PR and concluded the docs need no update.
+  // A healthy terminal state — distinct from `failed` (an error).
+  "no_changes",
   "failed",
 ]);
 export type AgentRunStatus = z.infer<typeof AgentRunStatusSchema>;
@@ -47,6 +50,7 @@ export const RunEventTypeSchema = z.enum([
   "block_write_completed",
   "write_failed",
   "run_completed",
+  "run_no_changes",
   "run_failed",
 ]);
 export type RunEventType = z.infer<typeof RunEventTypeSchema>;

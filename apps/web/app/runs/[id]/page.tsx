@@ -127,6 +127,18 @@ export default async function RunDetailPage({
             )}
           </div>
         </Section>
+      ) : run!.status === "no_changes" ? (
+        <Section title="Proposed changes">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-sm font-medium text-slate-700">
+              No documentation changes needed
+            </div>
+            <p className="mt-1 text-sm text-slate-600">
+              {run!.impactSummary ??
+                "The agent reviewed this PR and concluded the docs are already accurate."}
+            </p>
+          </div>
+        </Section>
       ) : (
         <Section title="Proposed changes">
           <p className="text-sm text-muted-foreground">

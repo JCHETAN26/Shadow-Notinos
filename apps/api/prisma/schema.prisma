@@ -19,6 +19,7 @@ enum AgentRunStatus {
   applying
   applied
   rejected
+  no_changes
   failed
 }
 

@@ -74,5 +74,6 @@ export const STATUS_META: Record<AgentRunStatus, { label: string; cls: string }>
   applying: { label: "Applying", cls: "bg-blue-50 text-blue-700" },
   applied: { label: "Applied", cls: "bg-green-50 text-green-700" },
   rejected: { label: "Rejected", cls: "bg-red-50 text-red-700" },
+  no_changes: { label: "No changes needed", cls: "bg-slate-50 text-slate-600" },
   failed: { label: "Failed", cls: "bg-red-50 text-red-700" },
 };
