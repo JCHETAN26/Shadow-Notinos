@@ -25,6 +25,8 @@ export const AgentRunSchema = z.object({
   prTitle: z.string(),
   prUrl: z.string(),
   author: z.string().nullable().optional(),
+  baseBranch: z.string().nullable().optional(),
+  headBranch: z.string().nullable().optional(),
   status: AgentRunStatusSchema,
   diffSummary: z.string().nullable().optional(),
   impactSummary: z.string().nullable().optional(),

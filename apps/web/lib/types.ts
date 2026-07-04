@@ -9,6 +9,8 @@ export interface RunListItem {
   prTitle: string;
   prUrl: string;
   author: string | null;
+  baseBranch: string | null;
+  headBranch: string | null;
   status: AgentRunStatus;
   createdAt: string;
   _count?: { patchPlans: number };

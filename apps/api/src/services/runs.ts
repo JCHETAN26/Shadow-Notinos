@@ -40,6 +40,8 @@ export async function createRunFromEvent(
   }
 
   const pr = event.pull_request;
+  const baseBranch = pr.base?.ref ?? null;
+  const headBranch = pr.head?.ref ?? null;
   const run = await prisma.agentRun.create({
     data: {
       repo: event.repository.full_name,
@@ -47,14 +49,17 @@ export async function createRunFromEvent(
       prTitle: pr.title,
       prUrl: pr.html_url,
       author: pr.user?.login ?? null,
+      baseBranch,
+      headBranch,
       status: "queued",
     },
   });
 
+  const branchNote = baseBranch ? ` (${headBranch ?? "?"} → ${baseBranch})` : "";
   await logRunEvent(
     run.id,
     "webhook_received",
-    `Merged PR ${event.repository.full_name}#${pr.number}: ${pr.title}`,
+    `Merged PR ${event.repository.full_name}#${pr.number}: ${pr.title}${branchNote}`,
   );
 
   const jobData: AgentJobData = {

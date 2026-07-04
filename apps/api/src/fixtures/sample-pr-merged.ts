@@ -19,6 +19,8 @@ export const SAMPLE_MERGED_PR = {
     merged_at: "2026-06-20T17:42:00Z",
     user: { login: "priya-dev" },
     labels: [{ name: "api" }, { name: "reliability" }],
+    base: { ref: "main" },
+    head: { ref: "feat/ranking-fallback" },
   },
   repository: {
     full_name: "acme/search-service",
