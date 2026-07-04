@@ -36,11 +36,11 @@ export const SAMPLE_DOCS: SampleDoc[] = [
       heading(2, "Endpoints"),
       paragraph("GET /search — run a query and return ranked results."),
       code(
-        "http",
+        "plain text",
         "GET /search?q=laptops&limit=20\n\n200 OK\n{\n  \"results\": [ ... ],\n  \"total\": 128\n}",
       ),
       paragraph("POST /search/reindex — rebuild the search index. Internal only."),
-      code("http", "POST /search/reindex\n\n202 Accepted\n{ \"job_id\": \"reindex_8f21\" }"),
+      code("plain text", "POST /search/reindex\n\n202 Accepted\n{ \"job_id\": \"reindex_8f21\" }"),
       heading(2, "Configuration"),
       bullet("SEARCH_INDEX_NAME — active index alias."),
       bullet("SEARCH_PAGE_SIZE — default result page size (20)."),
