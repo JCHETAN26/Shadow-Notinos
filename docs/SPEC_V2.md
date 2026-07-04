@@ -67,9 +67,11 @@ doc — which now describes code that isn't in production. For a tool whose pitc
   under **one grouped toggle** titled `▸ Pending changes`, with each entry labeled
   by branch and PR number. One shared toggle, not one-per-branch (avoids a forest
   of arrows).
-- **Graduation on ship** (deferred — see §7): when that work later reaches the
-  release branch, its pending entry is removed and the change flows into the body.
-  Branch-awareness and staleness-cleanup are the same mechanism.
+- **Graduation** (shipped, PR-F): a human clicks **Promote to body** on a staged
+  entry once its work ships — it re-applies the content to the body and deletes
+  the toggle entry — or **Dismiss** to drop it. Manual rather than auto-detected,
+  because "has this branch actually shipped?" is unreliable to infer (ephemeral /
+  squash-merged branches, releases that bundle many branches).
 
 **Why delta, not full doc:** the real cost in this system is **LLM output tokens**.
 A full parallel doc means the model regenerates a whole page per branch per merge;
@@ -136,17 +138,23 @@ Workflow is PRs-only (branch → PR → green CI → squash-merge). Each chunk i
 - Show placement (body vs pending) in the approval UI so the reviewer knows where it lands.
 - **Accept:** a merge into `main` edits the body; a merge into `dev` appears as a labeled delta under one `▸ Pending changes` toggle on the same page.
 
-### PR-F — Graduation on ship (deferred)
-- When a non-release branch's work reaches the release branch, remove its pending toggle entries and flow the change into the body.
-- Trickiest piece (mapping "this pending delta has now shipped"); not required for the demo. Ship A–E first.
+### PR-F — Graduation (shipped, manual promotion)
+- Each staged pending plan tracks the Notion block ids it wrote (`PatchPlan.pendingBlockIds`).
+- `POST /api/patches/:planId/promote` re-applies the content to the body, deletes the staged toggle blocks, marks the plan `graduated`. `POST /api/patches/:planId/dismiss` deletes the blocks and marks it `dismissed`. Both surfaced in the approval UI for staged pending plans.
+- **Decision:** graduation is **manual** (a human is the "has this shipped?" signal). Auto-detection was rejected — ephemeral/squash-merged branches and bundled releases make "this pending delta has now shipped" unreliable to infer.
+- **Accept:** a staged delta can be promoted into the body (and disappears from the toggle) or dismissed, with a full audit trail.
 
-**Dependency order:** A → (B, C, D independent) → E (needs A) → F (needs A+E).
+**Status:** all of A–F shipped and merged to `main` (PRs #12–#17). Plus a
+production-hardening pass (PRs #18–#22) — see `PRODUCTION_READINESS.md`.
+
+**Dependency order (as built):** A → (B, C, D independent) → E (needs A) → F (needs A+E).
 
 ---
 
 ## 7. Non-goals / deferred
 
-- **Graduation automation (PR-F)** — deferred; MVP can leave pending entries until manually cleared.
+- **Automatic graduation** — rejected in favor of manual promote/dismiss (PR-F); auto-detecting "this branch has shipped" is unreliable.
+- **Multi-tenant SaaS** — the system is single-tenant (one Notion workspace, env-based credentials). Multi-tenant isolation + encrypted per-user tokens are the first additions to go SaaS. See `PRODUCTION_READINESS.md`.
 - **Auto-approval of trivial patches** — explicitly rejected; the always-approve stance is the trust story.
 - **Metadata sync (PR/issue rows in a database)** — that is the native connection's job; Shadow Notino stays in the doc-content lane.
 - **Full-diff to the model** — still summarized excerpts only, never the raw diff.
