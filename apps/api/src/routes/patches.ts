@@ -29,35 +29,51 @@ patchesRouter.get("/runs/:id/patch", async (req, res, next) => {
   }
 });
 
-// POST /api/runs/:id/approve — record approval. The Notion write runs in Phase 8.
-patchesRouter.post("/runs/:id/approve", async (req, res, next) => {
+/**
+ * Reconcile a run's status from its plans. A run may hold several plans
+ * (multi-page), so it's only terminal once none are still proposed.
+ */
+export async function recomputeRunStatus(runId: string): Promise<void> {
+  const plans = await prisma.patchPlan.findMany({ where: { agentRunId: runId } });
+  let status: "waiting_approval" | "applied" | "failed" | "rejected";
+  if (plans.some((p) => p.status === "proposed")) status = "waiting_approval";
+  else if (plans.some((p) => p.status === "failed")) status = "failed";
+  else if (plans.some((p) => p.status === "applied")) status = "applied";
+  else status = "rejected";
+  await prisma.agentRun.update({ where: { id: runId }, data: { status } });
+}
+
+// POST /api/patches/:planId/approve — approve one plan and write it to Notion.
+patchesRouter.post("/patches/:planId/approve", async (req, res, next) => {
   try {
-    const plan = await latestPlan(req.params.id);
+    const plan = await prisma.patchPlan.findUnique({ where: { id: req.params.planId } });
     if (!plan) {
-      res.status(404).json({ error: "No patch plan to approve." });
+      res.status(404).json({ error: "Patch plan not found." });
       return;
     }
     if (plan.status !== "proposed") {
       res.status(409).json({ error: `Patch is already ${plan.status}.` });
       return;
     }
+    const runId = plan.agentRunId;
 
     await prisma.patchPlan.update({
       where: { id: plan.id },
       data: { status: "approved", approvedAt: new Date() },
     });
-    await prisma.agentRun.update({ where: { id: req.params.id }, data: { status: "applying" } });
-    await logRunEvent(req.params.id, "patch_approved", `Approved ${plan.id}`);
+    await prisma.agentRun.update({ where: { id: runId }, data: { status: "applying" } });
+    await logRunEvent(runId, "patch_approved", `Approved ${plan.id}`);
 
-    // Apply the approved actions to Notion (Phase 8). Synchronous so the UI
-    // shows the write outcome immediately.
+    // Apply the approved actions to Notion. Synchronous so the UI shows the
+    // outcome immediately; run status is reconciled across all of the run's plans.
     try {
       const result = await applyPatchPlan(plan.id);
-      res.json({ ok: result.ok, planId: plan.id, status: result.ok ? "applied" : "failed", result });
+      await recomputeRunStatus(runId);
+      res.json({ ok: result.ok, planId: plan.id, result });
     } catch (writeErr) {
       await prisma.patchPlan.update({ where: { id: plan.id }, data: { status: "failed" } });
-      await prisma.agentRun.update({ where: { id: req.params.id }, data: { status: "failed" } });
-      await logRunEvent(req.params.id, "write_failed", (writeErr as Error).message);
+      await recomputeRunStatus(runId);
+      await logRunEvent(runId, "write_failed", (writeErr as Error).message);
       res.status(502).json({ ok: false, planId: plan.id, error: (writeErr as Error).message });
     }
   } catch (err) {
@@ -65,17 +81,22 @@ patchesRouter.post("/runs/:id/approve", async (req, res, next) => {
   }
 });
 
-// POST /api/runs/:id/reject
-patchesRouter.post("/runs/:id/reject", async (req, res, next) => {
+// POST /api/patches/:planId/reject
+patchesRouter.post("/patches/:planId/reject", async (req, res, next) => {
   try {
-    const plan = await latestPlan(req.params.id);
+    const plan = await prisma.patchPlan.findUnique({ where: { id: req.params.planId } });
     if (!plan) {
-      res.status(404).json({ error: "No patch plan to reject." });
+      res.status(404).json({ error: "Patch plan not found." });
       return;
     }
+    if (plan.status !== "proposed") {
+      res.status(409).json({ error: `Patch is already ${plan.status}.` });
+      return;
+    }
+    const runId = plan.agentRunId;
     await prisma.patchPlan.update({ where: { id: plan.id }, data: { status: "rejected" } });
-    await prisma.agentRun.update({ where: { id: req.params.id }, data: { status: "rejected" } });
-    await logRunEvent(req.params.id, "patch_rejected", `Rejected ${plan.id}`);
+    await recomputeRunStatus(runId);
+    await logRunEvent(runId, "patch_rejected", `Rejected ${plan.id}`);
     res.json({ ok: true, planId: plan.id, status: "rejected" });
   } catch (err) {
     next(err);
