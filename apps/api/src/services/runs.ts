@@ -25,7 +25,7 @@ export function isMergedPR(event: GitHubMergedPREvent): boolean {
  */
 export async function createRunFromEvent(
   payload: unknown,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; tenantId?: string } = {},
 ): Promise<CreateRunOutcome> {
   const parsed = GitHubMergedPREventSchema.safeParse(payload);
   if (!parsed.success) {
@@ -72,6 +72,7 @@ export async function createRunFromEvent(
       author: pr.user?.login ?? null,
       baseBranch,
       headBranch,
+      ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
       status: "queued",
     },
   });
