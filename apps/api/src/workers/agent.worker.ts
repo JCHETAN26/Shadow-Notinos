@@ -89,7 +89,7 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
 
     // --- Phase 5: retrieve related Notion docs ---
     const query = buildSearchQuery(prContext);
-    const related = await searchDocs(query, 5);
+    const related = await searchDocs(query, run.tenantId, 5);
     await prisma.agentRun.update({
       where: { id: runId },
       data: { relatedDocs: related, status: "planning" },
@@ -124,7 +124,7 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
 
     const proposed: Array<{ title: string; actions: number }> = [];
     for (const target of targets) {
-      const headings = await getPageHeadings(target.pageId);
+      const headings = await getPageHeadings(target.pageId, run.tenantId);
       const plan = await generatePatchPlan({
         runId,
         pr: prContext,

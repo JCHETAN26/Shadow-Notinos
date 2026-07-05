@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { listEngineeringDocs } from "../services/notion/read.js";
 import { searchDocs } from "../services/notion/search.js";
+import { DEFAULT_TENANT_ID } from "../services/tenants.js";
 
 export const notionRouter: Router = Router();
 
@@ -23,7 +24,7 @@ notionRouter.get("/notion/search", async (req, res, next) => {
       return;
     }
     const k = Math.min(Number(req.query.k) || 5, 20);
-    const results = await searchDocs(q, k);
+    const results = await searchDocs(q, DEFAULT_TENANT_ID, k);
     res.json({ query: q, results });
   } catch (err) {
     next(err);
