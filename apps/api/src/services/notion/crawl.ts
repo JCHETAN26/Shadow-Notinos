@@ -30,14 +30,14 @@ function headingLevel(type: string): number | null {
  * Recursively walk a Notion page's block tree, emitting each text-bearing block
  * with the heading breadcrumb it sits under. Order is preserved.
  */
-export async function crawlPage(pageId: string): Promise<CrawledBlock[]> {
+export async function crawlPage(pageId: string, apiKey?: string): Promise<CrawledBlock[]> {
   const out: CrawledBlock[] = [];
   const stack: HeadingFrame[] = [];
 
   async function walk(blockId: string): Promise<void> {
     let cursor: string | undefined;
     do {
-      const res = await notion().blocks.children.list({
+      const res = await notion(apiKey).blocks.children.list({
         block_id: blockId,
         start_cursor: cursor,
         page_size: 100,

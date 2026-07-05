@@ -18,8 +18,9 @@ export async function indexPage(
   pageId: string,
   title: string,
   tenantId: string = DEFAULT_TENANT_ID,
+  apiKey?: string,
 ): Promise<IndexPageResult> {
-  const blocks = await crawlPage(pageId);
+  const blocks = await crawlPage(pageId, apiKey);
   const chunks = chunkBlocks(blocks);
 
   // Ensure a notion_docs row exists for this page.
