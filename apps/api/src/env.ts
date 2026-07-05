@@ -25,6 +25,10 @@ export const env = {
   databaseUrl: required("DATABASE_URL"),
   redisUrl: optional("REDIS_URL", "redis://localhost:6379"),
 
+  // 32-byte hex key for AES-256-GCM encryption of stored per-tenant credentials
+  // (BYOK). Generate with `openssl rand -hex 32`. In prod, source from a KMS.
+  masterKey: optional("MASTER_KEY"),
+
   githubWebhookSecret: optional("GITHUB_WEBHOOK_SECRET"),
   githubToken: optional("GITHUB_TOKEN"),
   // The branch whose merges edit the live doc body. Merges into any other branch

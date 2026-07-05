@@ -9,6 +9,65 @@ datasource db {
   extensions = [vector]
 }
 
+/// A customer account. BYOK: each tenant supplies its own Notion/Anthropic/GitHub
+/// credentials and owns its own runs, docs, and connected repos.
+model Tenant {
+  id         String   @id @default(uuid())
+  name       String
+  createdAt  DateTime @default(now())
+
+  users      User[]
+  credential TenantCredential?
+  repos      RepoConnection[]
+
+  @@map("tenants")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  tenantId  String
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+/// Per-tenant secrets + config. The three *Enc fields are AES-256-GCM ciphertext
+/// (see services/crypto.ts) — never store these in plaintext.
+model TenantCredential {
+  id                  String   @id @default(uuid())
+  tenantId            String   @unique
+  notionApiKeyEnc     String?
+  anthropicApiKeyEnc  String?
+  githubTokenEnc      String?
+  githubWebhookSecret String?
+  notionParentPageId  String?
+  releaseBranch       String   @default("main")
+  docTriggerPaths     String?
+  updatedAt           DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_credentials")
+}
+
+/// Maps a GitHub repo to the tenant that owns it, so an incoming webhook can be
+/// routed (and its signature verified) against the right tenant.
+model RepoConnection {
+  id           String   @id @default(uuid())
+  tenantId     String
+  repoFullName String   @unique
+  createdAt    DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("repo_connections")
+}
+
 enum AgentRunStatus {
   queued
   fetching_pr
