@@ -1,5 +1,6 @@
 /** Search indexed Notion docs — `pnpm notion:search "search fallback ranking"`. */
 import { searchDocs } from "../services/notion/search.js";
+import { DEFAULT_TENANT_ID } from "../services/tenants.js";
 import { prisma } from "../db/prisma.js";
 
 async function main(): Promise<void> {
@@ -10,7 +11,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const results = await searchDocs(query, 5);
+  const results = await searchDocs(query, DEFAULT_TENANT_ID, 5);
   if (results.length === 0) {
     console.log("No matches. Have you run `pnpm notion:index`?");
     return;

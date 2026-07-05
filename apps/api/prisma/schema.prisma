@@ -143,6 +143,7 @@ model RunEvent {
 
 model NotionDoc {
   id            String    @id @default(uuid())
+  tenantId      String    @default("00000000-0000-0000-0000-000000000001")
   notionPageId  String    @unique
   title         String
   serviceName   String?
@@ -151,6 +152,7 @@ model NotionDoc {
   lastIndexedAt DateTime?
   updatedAt     DateTime  @updatedAt
 
+  @@index([tenantId])
   @@map("notion_docs")
 }
 
@@ -158,6 +160,7 @@ model NotionDoc {
 /// via raw SQL in the initial migration (Prisma maps it as Unsupported).
 model NotionBlock {
   id           String   @id @default(uuid())
+  tenantId     String   @default("00000000-0000-0000-0000-000000000001")
   notionPageId String
   notionBlockId String
   blockType    String
@@ -169,6 +172,7 @@ model NotionBlock {
   updatedAt    DateTime @updatedAt
 
   @@index([notionPageId])
+  @@index([tenantId])
   @@map("notion_blocks")
 }
 
