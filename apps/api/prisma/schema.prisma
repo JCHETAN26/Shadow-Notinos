@@ -144,7 +144,7 @@ model RunEvent {
 model NotionDoc {
   id            String    @id @default(uuid())
   tenantId      String    @default("00000000-0000-0000-0000-000000000001")
-  notionPageId  String    @unique
+  notionPageId  String
   title         String
   serviceName   String?
   owner         String?
@@ -152,6 +152,9 @@ model NotionDoc {
   lastIndexedAt DateTime?
   updatedAt     DateTime  @updatedAt
 
+  // A page is unique per tenant, not globally — two tenants can never share or
+  // clobber each other's doc rows.
+  @@unique([tenantId, notionPageId])
   @@index([tenantId])
   @@map("notion_docs")
 }

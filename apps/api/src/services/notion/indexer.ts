@@ -23,11 +23,11 @@ export async function indexPage(
   const blocks = await crawlPage(pageId, apiKey);
   const chunks = chunkBlocks(blocks);
 
-  // Ensure a notion_docs row exists for this page.
+  // Ensure a notion_docs row exists for this page under this tenant.
   await prisma.notionDoc.upsert({
-    where: { notionPageId: pageId },
+    where: { tenantId_notionPageId: { tenantId, notionPageId: pageId } },
     create: { notionPageId: pageId, title, tenantId, lastIndexedAt: new Date() },
-    update: { title, tenantId, lastIndexedAt: new Date() },
+    update: { title, lastIndexedAt: new Date() },
   });
 
   // Replace this tenant's previously indexed blocks for this page.
