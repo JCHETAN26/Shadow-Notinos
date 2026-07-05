@@ -54,6 +54,8 @@ export const env = {
 
   apiPort: Number(optional("API_PORT", "4000")),
   webUrl: optional("WEB_URL", "http://localhost:3000"),
+  // Public base URL of this API — used to hand each tenant its webhook URL.
+  publicApiUrl: optional("PUBLIC_API_URL", "http://localhost:4000"),
 };
 
 /** Throw early if a feature's required credential is missing, with a clear message. */
