@@ -22,6 +22,9 @@ export default function HomePage() {
           <Link href="/demo" className="hover:text-foreground">
             Demo
           </Link>
+          <Link href="/onboarding" className="font-medium text-foreground hover:opacity-80">
+            Connect →
+          </Link>
         </nav>
       </header>
 
