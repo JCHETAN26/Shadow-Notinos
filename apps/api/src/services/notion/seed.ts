@@ -2,6 +2,7 @@ import type { Client } from "@notionhq/client";
 import { notion } from "../../integrations/notion.js";
 import { env } from "../../env.js";
 import { prisma } from "../../db/prisma.js";
+import { DEFAULT_TENANT_ID } from "../tenants.js";
 import {
   BASE_PROPS,
   DB_ENV_VARS,
@@ -84,7 +85,7 @@ async function seedContent(client: Client, ids: Ids): Promise<void> {
 
     // Mirror into Postgres so the app has a local handle before indexing (Phase 5).
     await prisma.notionDoc.upsert({
-      where: { notionPageId: page.id },
+      where: { tenantId_notionPageId: { tenantId: DEFAULT_TENANT_ID, notionPageId: page.id } },
       create: {
         notionPageId: page.id,
         title: doc.title,
