@@ -7,6 +7,7 @@ import { notion, notionLimiter, richTextToPlain, callout, code, todo, bullet, to
 import { env } from "../../env.js";
 import { prisma } from "../../db/prisma.js";
 import { logRunEvent } from "../audit.js";
+import { getTenantCredentials, DEFAULT_TENANT_ID } from "../tenants.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -53,9 +54,9 @@ export function describeNotionError(err: unknown): string {
 const lastSegment = (heading: string) => heading.split(">").pop()?.trim() ?? heading;
 
 /** Find a top-level heading block on the page whose text matches the target heading. */
-async function findHeadingBlockId(pageId: string, targetHeading: string): Promise<string | null> {
+async function findHeadingBlockId(pageId: string, targetHeading: string, apiKey?: string): Promise<string | null> {
   const want = lastSegment(targetHeading).toLowerCase();
-  const res = await withRetry(() => notion().blocks.children.list({ block_id: pageId, page_size: 100 }));
+  const res = await withRetry(() => notion(apiKey).blocks.children.list({ block_id: pageId, page_size: 100 }));
   for (const block of res.results) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const b = block as any;
@@ -75,9 +76,9 @@ const PENDING_TOGGLE_TITLE = "Pending changes";
  * branch deltas that haven't reached the release branch are nested inside it, so
  * the doc body stays honest about production while nothing is lost.
  */
-async function ensurePendingToggle(pageId: string): Promise<string> {
+async function ensurePendingToggle(pageId: string, apiKey?: string): Promise<string> {
   const want = PENDING_TOGGLE_TITLE.toLowerCase();
-  const res = await withRetry(() => notion().blocks.children.list({ block_id: pageId, page_size: 100 }));
+  const res = await withRetry(() => notion(apiKey).blocks.children.list({ block_id: pageId, page_size: 100 }));
   for (const block of res.results) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const b = block as any;
@@ -86,7 +87,7 @@ async function ensurePendingToggle(pageId: string): Promise<string> {
     }
   }
   const created = await withRetry(() =>
-    notion().blocks.children.append({
+    notion(apiKey).blocks.children.append({
       block_id: pageId,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       children: [toggle(PENDING_TOGGLE_TITLE)] as any,
@@ -126,9 +127,10 @@ type ApplyActionResult = NotionWriteResult & { createdIds?: string[] };
 async function applyAction(
   plan: DocPatchPlan,
   action: PatchAction,
+  apiKey: string | undefined,
   opts: ApplyOpts = {},
 ): Promise<ApplyActionResult> {
-  const client = notion();
+  const client = notion(apiKey);
 
   if (action.type === "create_review_task") {
     const db = env.notionDbs.reviewTasks;
@@ -180,7 +182,7 @@ async function applyAction(
   }
 
   // Body placement: insert after the matching heading, or at the end of the page.
-  const headingId = await findHeadingBlockId(plan.targetPageId, action.targetHeading);
+  const headingId = await findHeadingBlockId(plan.targetPageId, action.targetHeading, apiKey);
   const children = blocksFor(action);
   const res = await withRetry(() =>
     client.blocks.children.append({
@@ -211,7 +213,6 @@ export async function applyPatchPlan(planId: string): Promise<ApplyResult> {
     include: { actions: true },
   });
   if (!plan) throw new Error(`Patch plan ${planId} not found.`);
-  if (!env.notionApiKey) throw new Error("NOTION_API_KEY is not set — cannot write to Notion.");
 
   const runId = plan.agentRunId;
   const doc = plan.patchJson as unknown as DocPatchPlan;
@@ -224,10 +225,12 @@ export async function applyPatchPlan(planId: string): Promise<ApplyResult> {
 
   // Pending deltas carry a branch/PR label and are grouped under one toggle.
   const run = await prisma.agentRun.findUnique({ where: { id: runId } });
+  const apiKey = (await getTenantCredentials(run?.tenantId ?? DEFAULT_TENANT_ID)).notionApiKey;
+  if (!apiKey) throw new Error("No Notion API key for this tenant — cannot write to Notion.");
   const baseBranch = doc.baseBranch ?? run?.baseBranch ?? null;
   const prNumber = run?.prNumber;
   const pendingToggleId =
-    placement === "pending" ? await ensurePendingToggle(doc.targetPageId) : undefined;
+    placement === "pending" ? await ensurePendingToggle(doc.targetPageId, apiKey) : undefined;
 
   await logRunEvent(
     runId,
@@ -255,7 +258,7 @@ export async function applyPatchPlan(planId: string): Promise<ApplyResult> {
         : undefined;
 
     try {
-      const result = await applyAction(doc, action, { pendingToggleId, label });
+      const result = await applyAction(doc, action, apiKey, { pendingToggleId, label });
       results.push(result);
       if (result.createdIds) stagedBlockIds.push(...result.createdIds);
       applied += 1;
@@ -297,8 +300,8 @@ export async function applyPatchPlan(planId: string): Promise<ApplyResult> {
 }
 
 /** Best-effort delete of the Notion blocks staged under the pending toggle. */
-async function deletePendingBlocks(ids: string[]): Promise<void> {
-  const client = notion();
+async function deletePendingBlocks(ids: string[], apiKey?: string): Promise<void> {
+  const client = notion(apiKey);
   for (const id of ids) {
     try {
       await withRetry(() => client.blocks.delete({ block_id: id }));
@@ -316,13 +319,15 @@ async function deletePendingBlocks(ids: string[]): Promise<void> {
 export async function promotePendingPlan(planId: string): Promise<ApplyResult> {
   const plan = await prisma.patchPlan.findUnique({ where: { id: planId }, include: { actions: true } });
   if (!plan) throw new Error(`Patch plan ${planId} not found.`);
-  if (!env.notionApiKey) throw new Error("NOTION_API_KEY is not set — cannot write to Notion.");
   const doc = plan.patchJson as unknown as DocPatchPlan;
   if ((doc.placement ?? "body") !== "pending" || plan.status !== "applied") {
     throw new Error("Only a staged (applied) pending plan can be promoted.");
   }
 
   const runId = plan.agentRunId;
+  const run = await prisma.agentRun.findUnique({ where: { id: runId } });
+  const apiKey = (await getTenantCredentials(run?.tenantId ?? DEFAULT_TENANT_ID)).notionApiKey;
+  if (!apiKey) throw new Error("No Notion API key for this tenant — cannot write to Notion.");
   const results: NotionWriteResult[] = [];
   let applied = 0;
   let failed = 0;
@@ -335,7 +340,7 @@ export async function promotePendingPlan(planId: string): Promise<ApplyResult> {
     const action = row.notionPayload as unknown as PatchAction;
     if (!("targetHeading" in action)) continue;
     try {
-      const r = await applyAction(doc, action, {}); // body placement
+      const r = await applyAction(doc, action, apiKey, {}); // body placement
       results.push(r);
       applied += 1;
     } catch (err) {
@@ -346,7 +351,7 @@ export async function promotePendingPlan(planId: string): Promise<ApplyResult> {
     }
   }
 
-  await deletePendingBlocks(plan.pendingBlockIds);
+  await deletePendingBlocks(plan.pendingBlockIds, apiKey);
 
   const ok = failed === 0;
   await prisma.patchPlan.update({ where: { id: planId }, data: { status: "graduated", pendingBlockIds: [] } });
@@ -362,12 +367,13 @@ export async function promotePendingPlan(planId: string): Promise<ApplyResult> {
 export async function dismissPendingPlan(planId: string): Promise<void> {
   const plan = await prisma.patchPlan.findUnique({ where: { id: planId } });
   if (!plan) throw new Error(`Patch plan ${planId} not found.`);
-  if (!env.notionApiKey) throw new Error("NOTION_API_KEY is not set — cannot write to Notion.");
   const doc = plan.patchJson as unknown as DocPatchPlan;
   if ((doc.placement ?? "body") !== "pending" || plan.status !== "applied") {
     throw new Error("Only a staged (applied) pending plan can be dismissed.");
   }
-  await deletePendingBlocks(plan.pendingBlockIds);
+  const run = await prisma.agentRun.findUnique({ where: { id: plan.agentRunId } });
+  const apiKey = (await getTenantCredentials(run?.tenantId ?? DEFAULT_TENANT_ID)).notionApiKey;
+  await deletePendingBlocks(plan.pendingBlockIds, apiKey);
   await prisma.patchPlan.update({ where: { id: planId }, data: { status: "dismissed", pendingBlockIds: [] } });
   await logRunEvent(plan.agentRunId, "patch_dismissed", `Dismissed staged changes for "${doc.targetPageTitle}"`);
 }

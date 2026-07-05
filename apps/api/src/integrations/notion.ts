@@ -2,19 +2,25 @@ import { Client } from "@notionhq/client";
 import { env } from "../env.js";
 import { createRateLimiter } from "./rate-limit.js";
 
-let client: Client | null = null;
+// One client per API key (multi-tenant BYOK: each tenant uses its own Notion token).
+const clients = new Map<string, Client>();
 
 /** Process-wide throttle so all Notion calls stay under the API's rate limit. */
 export const notionLimiter = createRateLimiter(env.notionMaxRps);
 
-/** Lazily construct the Notion client so commands that don't touch Notion don't require the key. */
-export function notion(): Client {
-  if (!env.notionApiKey) {
+/** Construct/reuse the Notion client for a key (falls back to the env key). */
+export function notion(apiKey?: string): Client {
+  const key = apiKey || env.notionApiKey;
+  if (!key) {
     throw new Error(
-      "NOTION_API_KEY is not set. Add it to .env (create an integration at https://www.notion.so/my-integrations).",
+      "No Notion API key. Set NOTION_API_KEY in .env, or provide the tenant's key (create an integration at https://www.notion.so/my-integrations).",
     );
   }
-  if (!client) client = new Client({ auth: env.notionApiKey });
+  let client = clients.get(key);
+  if (!client) {
+    client = new Client({ auth: key });
+    clients.set(key, client);
+  }
   return client;
 }
 

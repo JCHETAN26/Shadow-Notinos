@@ -21,6 +21,8 @@ export interface PlannerInput {
   baseBranch?: string | null;
   /** The branch whose merges edit the live body. Anything else → pending. */
   releaseBranch: string;
+  /** The tenant's Anthropic key (BYOK). Falls back to the env key when unset. */
+  anthropicApiKey?: string;
 }
 
 /** A function that takes (system, user) prompts and returns the model's raw text. Injectable for tests. */
@@ -173,7 +175,7 @@ function assemble(input: PlannerInput, raw: unknown): unknown {
  */
 export async function generatePatchPlan(
   input: PlannerInput,
-  callModel: ModelCaller = callClaude,
+  callModel: ModelCaller = (system, user) => callClaude(system, user, input.anthropicApiKey),
 ): Promise<DocPatchPlan> {
   const user = buildUserPrompt(input);
 

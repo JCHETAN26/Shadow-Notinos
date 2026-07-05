@@ -1,19 +1,25 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "../env.js";
 
-let client: Anthropic | null = null;
+// One client per API key (multi-tenant BYOK: each tenant uses its own key).
+const clients = new Map<string, Anthropic>();
 
 /** Default planner model. Override with CLAUDE_MODEL in .env if needed. */
 export const CLAUDE_MODEL = process.env.CLAUDE_MODEL || "claude-opus-4-8";
 
-/** Lazily construct the Anthropic client so non-LLM commands don't require the key. */
-export function anthropic(): Anthropic {
-  if (!env.anthropicApiKey) {
+/** Construct/reuse the Anthropic client for a key (falls back to the env key). */
+export function anthropic(apiKey?: string): Anthropic {
+  const key = apiKey || env.anthropicApiKey;
+  if (!key) {
     throw new Error(
-      "ANTHROPIC_API_KEY is not set. Add it to .env (https://console.anthropic.com/).",
+      "No Anthropic API key. Set ANTHROPIC_API_KEY in .env, or provide the tenant's key.",
     );
   }
-  if (!client) client = new Anthropic({ apiKey: env.anthropicApiKey });
+  let client = clients.get(key);
+  if (!client) {
+    client = new Anthropic({ apiKey: key });
+    clients.set(key, client);
+  }
   return client;
 }
 
@@ -21,8 +27,8 @@ export function anthropic(): Anthropic {
  * Call Claude and return the concatenated text of the response.
  * The planner asks for JSON only; we validate the result with Zod downstream.
  */
-export async function callClaude(system: string, user: string): Promise<string> {
-  const res = await anthropic().messages.create({
+export async function callClaude(system: string, user: string, apiKey?: string): Promise<string> {
+  const res = await anthropic(apiKey).messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 8000,
     system,
