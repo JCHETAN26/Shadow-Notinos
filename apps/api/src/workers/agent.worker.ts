@@ -6,9 +6,9 @@ import { logRunEvent } from "../services/audit.js";
 import { getPRContext, hasMeaningfulDiff } from "../services/github/pr-context.js";
 import { searchDocs, getPageHeadings } from "../services/notion/search.js";
 import { parseTriggerPaths, matchesAnyPath } from "../services/github/path-filter.js";
+import { getTenantCredentials } from "../services/tenants.js";
 import { generatePatchPlan } from "../agents/planner.js";
 import { savePatchPlan } from "../services/patch-plans.js";
-import { env } from "../env.js";
 import type { PullRequestContext } from "@shadow/shared";
 
 /** Cap on how many doc pages one PR may propose against (bounds LLM calls). */
@@ -32,6 +32,9 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
   const run = await prisma.agentRun.findUnique({ where: { id: runId } });
   if (!run) throw new Error(`Agent run ${runId} not found.`);
 
+  // BYOK: process this run with its tenant's own credentials (env fallback).
+  const creds = await getTenantCredentials(run.tenantId);
+
   // --- Phase 4: fetch and store PR context ---
   await prisma.agentRun.update({ where: { id: runId }, data: { status: "fetching_pr" } });
   try {
@@ -43,7 +46,7 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
       author: run.author,
       baseBranch: run.baseBranch,
       headBranch: run.headBranch,
-    });
+    }, { githubToken: creds.githubToken });
 
     await prisma.agentRun.update({
       where: { id: runId },
@@ -71,7 +74,7 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
     }
 
     // --- Path gating: skip PRs that touch nothing in the configured allowlist ---
-    const triggerPaths = parseTriggerPaths(env.docTriggerPaths);
+    const triggerPaths = parseTriggerPaths(creds.docTriggerPaths);
     const filenames = prContext.filesChanged.map((f) => f.filename);
     if (!matchesAnyPath(filenames, triggerPaths)) {
       await prisma.agentRun.update({ where: { id: runId }, data: { status: "no_changes" } });
@@ -106,9 +109,9 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
       await logRunEvent(runId, "run_failed", "No related docs to plan against — seed + index the workspace first.");
       return;
     }
-    if (!env.anthropicApiKey) {
+    if (!creds.anthropicApiKey) {
       await prisma.agentRun.update({ where: { id: runId }, data: { status: "failed" } });
-      await logRunEvent(runId, "run_failed", "ANTHROPIC_API_KEY is not set — cannot run the planner.");
+      await logRunEvent(runId, "run_failed", "No Anthropic API key for this tenant — cannot run the planner.");
       return;
     }
 
@@ -128,7 +131,8 @@ export async function processAgentJob(data: AgentJobData): Promise<void> {
         relatedDocs: related,
         targetPage: { pageId: target.pageId, title: target.title, headings },
         baseBranch: prContext.baseBranch ?? run.baseBranch,
-        releaseBranch: env.releaseBranch,
+        releaseBranch: creds.releaseBranch,
+        anthropicApiKey: creds.anthropicApiKey,
       });
 
       // Per page, the planner may conclude nothing needs changing — skip it.

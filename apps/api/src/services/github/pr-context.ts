@@ -49,10 +49,10 @@ export interface RunRef {
 }
 
 /** Fetch PR context from the live GitHub API. */
-async function fetchLive(run: RunRef): Promise<PullRequestContext> {
+async function fetchLive(run: RunRef, githubToken?: string): Promise<PullRequestContext> {
   const [owner, repo] = run.repo.split("/");
   if (!owner || !repo) throw new Error(`Invalid repo "${run.repo}" (expected owner/repo).`);
-  const gh = github();
+  const gh = github(githubToken);
   const prNumber = run.prNumber;
 
   const { data: pr } = await gh.pulls.get({ owner, repo, pull_number: prNumber });
@@ -123,10 +123,13 @@ function isDemoRepo(repo: string): boolean {
  * Get PR context for a run. Uses the live GitHub API when possible and falls
  * back to the bundled demo fixture for the demo repo or when GitHub is unreachable.
  */
-export async function getPRContext(run: RunRef): Promise<PullRequestContext> {
+export async function getPRContext(
+  run: RunRef,
+  opts: { githubToken?: string } = {},
+): Promise<PullRequestContext> {
   if (isDemoRepo(run.repo)) return fetchDemo(run);
   try {
-    return await fetchLive(run);
+    return await fetchLive(run, opts.githubToken);
   } catch (err) {
     throw new Error(
       `Failed to fetch PR context for ${run.repo}#${run.prNumber}: ${(err as Error).message}`,
