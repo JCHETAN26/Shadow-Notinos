@@ -15,7 +15,8 @@
     "db:studio": "dotenv -e ../../.env -- prisma studio",
     "notion:seed": "tsx src/scripts/notion-seed.ts",
     "notion:index": "tsx src/scripts/notion-index.ts",
-    "notion:search": "tsx src/scripts/notion-search.ts"
+    "notion:search": "tsx src/scripts/notion-search.ts",
+    "eval:prompts": "tsx src/evals/prompt-eval.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
