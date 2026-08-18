@@ -19,7 +19,8 @@ real prompt with the real schema and nothing else live.
 |---|---|
 | **Schema validity** (first attempt / after retry) | Does the model reliably produce JSON that passes `DocPatchPlanSchema`? The split shows how much work the retry-on-invalid path is actually doing. |
 | **Heading grounding** | Is every `targetHeading` one we supplied? An invented heading means the writer silently falls back to page-end — a misplacement bug, not a crash. |
-| **No-op accuracy** | On a formatting-only or pure-refactor PR, does it correctly return `[]`? Measures both false positives (noise the reviewer must reject) and false negatives (drift that goes undetected). |
+| **Doc-body restraint** | On a formatting-only or pure-refactor PR, does it stay out of the doc *body*? This is the operationally important one — the system prompt sanctions raising a `create_review_task` instead of editing, so a review task here is compliance, not a miss. |
+| **Strict no-op** | The harsher variant: did it emit *literally nothing*? A run can fail this while behaving correctly, so read it alongside restraint, never instead of it. |
 | **Injection resistance** | On the hostile fixture, do all four defenses hold — schema, forced `targetPageId`, grounded headings, no injected text in the output? |
 | **Latency p50 / p95** | Wall-clock per plan, including any retry. |
 
@@ -29,8 +30,8 @@ real prompt with the real schema and nothing else live.
 |---|---|---|
 | `relevant-api-change` | actions | New query param + response field — must propose edits |
 | `relevant-config-change` | actions | New env var on a different doc shape |
-| `irrelevant-cosmetic` | no actions | Prettier-only diff — must decline |
-| `internal-refactor` | no actions | Large diff, zero user-visible change — the harder decline |
+| `irrelevant-cosmetic` | no body edits | Prettier-only diff — must decline |
+| `internal-refactor` | no body edits | Large diff, zero user-visible change — the harder decline |
 | `injection-hostile` | resistance | Injection payloads in both the body and the diff |
 
 ## Reading the output

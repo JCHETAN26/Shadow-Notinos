@@ -47,9 +47,15 @@ interface RunResult {
   grounded: boolean | null;
   groundedTargets: number;
   ungroundedHeadings: string[];
-  noOpCorrect: boolean | null;
+  /** Stayed out of the doc body when it should have (or edited it when it should have). */
+  restraint: boolean | null;
+  /** The stricter "emitted literally nothing" variant. */
+  strictNoOp: boolean | null;
+  bodyEdits: number;
   injectionResisted: boolean | null;
   injectionFailures: string[];
+  /** The full plan, so any reported number can be traced back to its output. */
+  plan: DocPatchPlan | null;
   error?: string;
 }
 
@@ -77,9 +83,12 @@ async function runOnce(testCase: EvalCase, run: number): Promise<RunResult> {
     grounded: null,
     groundedTargets: 0,
     ungroundedHeadings: [],
-    noOpCorrect: null,
+    restraint: null,
+    strictNoOp: null,
+    bodyEdits: 0,
     injectionResisted: null,
     injectionFailures: [],
+    plan: null,
   };
 
   const started = Date.now();
@@ -126,9 +135,12 @@ async function runOnce(testCase: EvalCase, run: number): Promise<RunResult> {
     groundedTargets: grounding.total,
     ungroundedHeadings: grounding.offenders,
     // The hostile case is scored for resistance, not for action count.
-    noOpCorrect: testCase.hostile ? null : noOp.correct,
+    restraint: testCase.hostile ? null : noOp.restraint,
+    strictNoOp: testCase.hostile ? null : noOp.strictNoOp,
+    bodyEdits: noOp.bodyEdits,
     injectionResisted: injection ? injection.resisted : null,
     injectionFailures: injection ? injection.failures : [],
+    plan,
   };
 }
 
@@ -145,8 +157,9 @@ function summarize(results: RunResult[]) {
   const groundingRuns = parsed.filter((r) => r.groundedTargets > 0);
   const groundedOk = groundingRuns.filter((r) => r.grounded);
 
-  const noOpRuns = parsed.filter((r) => r.noOpCorrect !== null);
-  const noOpOk = noOpRuns.filter((r) => r.noOpCorrect);
+  const noOpRuns = parsed.filter((r) => r.restraint !== null);
+  const restraintOk = noOpRuns.filter((r) => r.restraint);
+  const strictOk = noOpRuns.filter((r) => r.strictNoOp);
 
   const injectionRuns = parsed.filter((r) => r.injectionResisted !== null);
   const injectionOk = injectionRuns.filter((r) => r.injectionResisted);
@@ -161,7 +174,8 @@ function summarize(results: RunResult[]) {
     groundingRuns: groundingRuns.length,
     groundedOk: groundedOk.length,
     noOpRuns: noOpRuns.length,
-    noOpOk: noOpOk.length,
+    restraintOk: restraintOk.length,
+    strictOk: strictOk.length,
     injectionRuns: injectionRuns.length,
     injectionOk: injectionOk.length,
     p50: percentile(latencies, 50),
@@ -252,7 +266,8 @@ async function main(): Promise<void> {
   console.log(`   schema-valid (after retry)   ${pct(s.parsedOk, s.total)}   (${s.parsedOk}/${s.total})`);
   console.log(`   schema-valid (first attempt) ${pct(s.firstAttemptOk, s.total)}   (${s.firstAttemptOk}/${s.total})`);
   console.log(`   heading grounding            ${pct(s.groundedOk, s.groundingRuns)}   (${s.groundedOk}/${s.groundingRuns} runs that targeted a heading)`);
-  console.log(`   no-op accuracy               ${pct(s.noOpOk, s.noOpRuns)}   (${s.noOpOk}/${s.noOpRuns})`);
+  console.log(`   doc-body restraint           ${pct(s.restraintOk, s.noOpRuns)}   (${s.restraintOk}/${s.noOpRuns})`);
+  console.log(`   strict no-op (emitted none)  ${pct(s.strictOk, s.noOpRuns)}   (${s.strictOk}/${s.noOpRuns})`);
   console.log(`   injection resistance         ${pct(s.injectionOk, s.injectionRuns)}   (${s.injectionOk}/${s.injectionRuns})`);
   console.log(`   latency p50 / p95            ${(s.p50 / 1000).toFixed(1)}s / ${(s.p95 / 1000).toFixed(1)}s`);
   console.log(`   model calls made             ${s.modelCallsTotal}`);
@@ -265,7 +280,7 @@ async function main(): Promise<void> {
 
   const failures = results.filter((r) => r.failure === "invalid");
   const apiErrors = results.filter((r) => r.failure === "api");
-  const misses = results.filter((r) => r.noOpCorrect === false);
+  const misses = results.filter((r) => r.restraint === false);
   const ungrounded = results.filter((r) => r.ungroundedHeadings.length > 0);
   const breached = results.filter((r) => r.injectionResisted === false);
 
@@ -279,7 +294,10 @@ async function main(): Promise<void> {
       console.log(`     ${apiErrors[0]!.error}`);
     }
     for (const r of misses) {
-      console.log(`   ~ ${r.case} run ${r.run}: emitted ${r.actions} action(s) against expectation`);
+      console.log(
+        `   ~ ${r.case} run ${r.run}: ${r.bodyEdits} body edit(s) against expectation` +
+          ` (types: ${r.actionTypes.join(", ") || "none"})`,
+      );
     }
     for (const r of ungrounded) {
       console.log(`   ~ ${r.case} run ${r.run}: ungrounded heading(s) ${r.ungroundedHeadings.join(", ")}`);

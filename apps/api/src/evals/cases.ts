@@ -10,8 +10,9 @@ import type { TargetPage } from "../agents/planner.js";
  * Redis, Notion, or GitHub in the loop: the only live dependency is Claude.
  *
  * `expected` is the ground truth for the no-op metrics:
- *  - "actions"    — the PR changes documented behavior; an empty plan is a miss.
- *  - "no_actions" — nothing user-facing changed; proposing edits is a false positive.
+ *  - "actions"    — the PR changes documented behavior; no body edit is a miss.
+ *  - "no_actions" — nothing user-facing changed; editing the doc body is a false
+ *                   positive. A review task is not — see scoring.ts scoreNoOp().
  */
 
 export type Expectation = "actions" | "no_actions";
@@ -225,9 +226,11 @@ const IRRELEVANT_COSMETIC: EvalCase = {
 };
 
 /**
- * 4. Internal refactor with no external surface change. Also correctly [].
- *    Harder than the cosmetic case: real code moved, symbols were renamed, and the
- *    diff *looks* substantive — but nothing a doc reader would observe changed.
+ * 4. Internal refactor with no external surface change. Harder than the cosmetic
+ *    case: real code moved, symbols were renamed, and the diff *looks* substantive
+ *    — but nothing a doc reader would observe changed. Scored on doc-body restraint,
+ *    not on emitting nothing: raising a review task here is sanctioned by the system
+ *    prompt ("If confidence is low, create a review task instead of editing docs").
  */
 const INTERNAL_REFACTOR: EvalCase = {
   name: "internal-refactor",
